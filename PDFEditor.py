@@ -5409,13 +5409,8 @@ class SelectablePDFViewer:
             self.update_tool_button_states()
             
     def _get_page_bytes(self, page_indices: Set[int]) -> bytes:
-        temp_doc = fitz.open()
-        sorted_indices = sorted(list(page_indices))
-        for index in sorted_indices:
-            temp_doc.insert_pdf(self.pdf_document, from_page=index, to_page=index)
-        page_bytes = temp_doc.write()
-        temp_doc.close()
-        return page_bytes
+        """Wrapper dla PDFTools.get_page_bytes"""
+        return self.pdf_tools.get_page_bytes(self.pdf_document, page_indices)
     
     def copy_selected_pages(self):
         if not self.pdf_document or not self.selected_pages:
@@ -5439,9 +5434,15 @@ class SelectablePDFViewer:
             self.clipboard = self._get_page_bytes(self.selected_pages)
             self.pages_in_clipboard_count = len(self.selected_pages)
             pages_to_delete = sorted(list(self.selected_pages), reverse=True)
-            for page_index in pages_to_delete:
-                self.pdf_document.delete_page(page_index)
-            deleted_count = len(self.selected_pages)
+            
+            # Użyj PDFTools do usunięcia stron
+            deleted_count = self.pdf_tools.delete_pages(
+                self.pdf_document,
+                pages_to_delete,
+                progress_callback=self._update_status,
+                progressbar_callback=None
+            )
+            
             self.selected_pages.clear()
             
             # Validate and update active_page_index after deletion
@@ -5546,15 +5547,22 @@ class SelectablePDFViewer:
     def _perform_paste(self, target_index: int):
         try:
             self._save_state_to_undo()
-            temp_doc = fitz.open("pdf", self.clipboard)
-            num_inserted = len(temp_doc)
             
-            # Pokaż pasek postępu (tryb nieokreślony dla pojedynczej operacji wklejania)
+            # Pokaż pasek postępu
             self.show_progressbar(mode="indeterminate")
             self._update_status("Wklejanie stron...")
             
-            self.pdf_document.insert_pdf(temp_doc, start_at=target_index)
-            temp_doc.close()
+            # Deleguj do PDFTools
+            def progress_callback(current, total):
+                self.update_progressbar(current) if current else None
+            
+            num_inserted = self.pdf_tools.paste_pages(
+                self.pdf_document,
+                self.clipboard,
+                target_index,
+                progress_callback=self._update_status,
+                progressbar_callback=progress_callback
+            )
 
             # Select the newly pasted pages
             self.selected_pages = set(range(target_index, target_index + num_inserted))
@@ -5599,20 +5607,25 @@ class SelectablePDFViewer:
                 self._update_status("Anulowano usuwanie stron.")
                 return
         
-        deleted_count = 0
         try:
             if save_state:
                 self._save_state_to_undo()
             
-            self.show_progressbar(maximum=len(pages_to_delete))
-            self._update_status("Usuwanie stron...")
+            # Deleguj do PDFTools
+            def progress_callback(current, total):
+                if current == 0:
+                    self.show_progressbar(maximum=total)
+                self.update_progressbar(current)
+                if current == total:
+                    self.hide_progressbar()
             
-            for idx, page_index in enumerate(pages_to_delete):
-                self.pdf_document.delete_page(page_index)
-                deleted_count += 1
-                self.update_progressbar(idx + 1)
+            deleted_count = self.pdf_tools.delete_pages(
+                self.pdf_document,
+                pages_to_delete,
+                progress_callback=self._update_status,
+                progressbar_callback=progress_callback
+            )
             
-            self.hide_progressbar()
             self.selected_pages.clear()
             self.tk_images.clear()
             for widget in list(self.scrollable_frame.winfo_children()): widget.destroy()
@@ -5970,23 +5983,27 @@ class SelectablePDFViewer:
         pages_to_rotate = sorted(list(self.selected_pages))
         try:
             self._save_state_to_undo()
-            self.show_progressbar(maximum=len(pages_to_rotate))
-            rotated_count = 0
-            for idx, page_index in enumerate(pages_to_rotate):
-                page = self.pdf_document.load_page(page_index)
-                current_rotation = page.rotation
-                new_rotation = (current_rotation + angle) % 360
-                page.set_rotation(new_rotation)
-                rotated_count += 1
-                self.update_progressbar(idx + 1)
-
-            self.hide_progressbar()
+            
+            # Deleguj do PDFTools
+            def progress_callback(current, total):
+                if current == 0:
+                    self.show_progressbar(maximum=total)
+                self.update_progressbar(current)
+                if current == total:
+                    self.hide_progressbar()
+            
+            rotated_count = self.pdf_tools.rotate_pages(
+                self.pdf_document,
+                pages_to_rotate,
+                angle,
+                progress_callback=self._update_status,
+                progressbar_callback=progress_callback
+            )
             
             # Optymalizacja: odśwież tylko zmienione miniatury
             self.show_progressbar(maximum=len(pages_to_rotate))
             for i, page_index in enumerate(pages_to_rotate):
                 self._update_status(f"Obrócono {rotated_count} stron o {angle} stopni. Odświeżanie miniatur...")
-               
                 self.update_single_thumbnail(page_index)
                 self.update_progressbar(i + 1)
             self.hide_progressbar()
