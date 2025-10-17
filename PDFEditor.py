@@ -3809,36 +3809,36 @@ class SelectablePDFViewer:
             custom_messagebox(self.master, "Informacja", "Najpierw otwórz plik PDF.", typ="info")
             return
 
-        # 1. Zapisz obecny stan do historii przed zmianą
+        # Zapisz obecny stan do historii przed zmianą
         self._save_state_to_undo() 
         
         try:
-            doc = self.pdf_document
-            page_count = len(doc)
+            # Deleguj do PDFTools
+            def progress_callback(current, total):
+                if current == 0:
+                    self.show_progressbar(maximum=total)
+                self.update_progressbar(current)
+                if current == total:
+                    self.hide_progressbar()
             
-            # Tworzenie nowego, pustego dokumentu z odwróconą kolejnością
-            new_doc = fitz.open()
-            
-            # Update status first to ensure it's visible immediately
-            self._update_status("Odwracanie kolejności stron...")
-            self.show_progressbar(maximum=page_count)
-            
-            for idx, i in enumerate(range(page_count - 1, -1, -1)):
-                new_doc.insert_pdf(doc, from_page=i, to_page=i)
-                self.update_progressbar(idx + 1)
+            new_doc = self.pdf_tools.reverse_pages(
+                self.pdf_document,
+                progress_callback=self._update_status,
+                progressbar_callback=progress_callback
+            )
             
             self.hide_progressbar()
             
             # Zastąpienie starego dokumentu nowym
+            page_count = len(self.pdf_document)
             self.pdf_document.close()
             self.pdf_document = new_doc
             
-            # 2. Resetowanie stanu (wyzerowanie zaznaczenia)
+            # Resetowanie stanu (wyzerowanie zaznaczenia)
             self.active_page_index = 0
             self.selected_pages.clear()
             
-            # 3. RĘCZNE CZYSZCZENIE I ODŚWIEŻENIE WIDOKU
-            # Używamy zestawu metod zidentyfikowanych w Twoim kodzie:
+            # Czyszczenie i odświeżenie widoku
             self.tk_images.clear()
             for widget in list(self.scrollable_frame.winfo_children()): 
                 widget.destroy()
@@ -3847,7 +3847,6 @@ class SelectablePDFViewer:
             self._reconfigure_grid()
             self.update_tool_button_states()
             self.update_focus_display()
-            # -----------------------------------------------
             
             self._update_status(f"Pomyślnie odwrócono kolejność {page_count} stron. Odswieżanie miniatur...")
             
@@ -3957,8 +3956,6 @@ class SelectablePDFViewer:
         try:
             # Ustawienia eksportu - pobierz DPI z preferencji
             export_dpi = int(self.prefs_manager.get('export_image_dpi', '600'))
-            zoom = export_dpi / 72.0 
-            matrix = fitz.Matrix(zoom, zoom)
             
             # Pobierz nazwę bazową pliku źródłowego
             if hasattr(self, 'file_path') and self.file_path:
@@ -3966,39 +3963,27 @@ class SelectablePDFViewer:
             else:
                 base_filename = "dokument"
             
-            # Utwórz zakres stron
-            if len(selected_indices) == 1:
-                page_range = str(selected_indices[0] + 1)
-            else:
-                page_range = f"{selected_indices[0] + 1}-{selected_indices[-1] + 1}"
-            
-            exported_count = 0
-            total_pages = len(selected_indices)
-            
             self.master.config(cursor="wait")
-            self.show_progressbar(maximum=total_pages)
-            self._update_status("Eksportowanie stron do obrazów...")
             
-            for idx, index in enumerate(selected_indices):
-                if index < len(self.pdf_document):
-                    page = self.pdf_document.load_page(index)
-                    
-                    pix = page.get_pixmap(matrix=matrix, alpha=False)
-                    
-                    # Generuj unikalną nazwę pliku
-                    single_page_range = str(index + 1)
-                    output_path = generate_unique_export_filename(
-                        output_dir, base_filename, single_page_range, "png"
-                    )
-                    
-                    pix.save(output_path)
-                    exported_count += 1
-                    self.update_progressbar(idx + 1)
+            # Deleguj do PDFTools
+            def progress_callback(current, total):
+                if current == 0:
+                    self.show_progressbar(maximum=total)
+                self.update_progressbar(current)
+                if current == total:
+                    self.hide_progressbar()
+            
+            exported_files = self.pdf_tools.export_pages_to_images(
+                self.pdf_document, selected_indices, output_dir,
+                base_filename, export_dpi, 'png',
+                progress_callback=self._update_status,
+                progressbar_callback=progress_callback
+            )
             
             self.hide_progressbar()
             self.master.config(cursor="")
             
-            self._update_status(f"Pomyślnie wyeksportowano {exported_count} stron do folderu: {output_dir}")   
+            self._update_status(f"Pomyślnie wyeksportowano {len(exported_files)} stron do folderu: {output_dir}")   
         except Exception as e:
             self.hide_progressbar()
             self.master.config(cursor="")
@@ -5043,37 +5028,33 @@ class SelectablePDFViewer:
             image_path = filepath
 
         try:
-            img = Image.open(image_path)
-            image_width_px, image_height_px = img.size
-            image_dpi = img.info.get('dpi', (96, 96))[0] if isinstance(img.info.get('dpi'), tuple) else 96
-            img.close()
+            # Deleguj do PDFTools
+            new_pdf_document = self.pdf_tools.create_pdf_from_image_exact_size(image_path)
+            
+            if new_pdf_document is None:
+                custom_messagebox(self.master, "Błąd", "Nie można utworzyć PDF z obrazu.", typ="error")
+                return
+            
+            # Zamień obecny dokument nowym
+            if self.pdf_document:
+                self.pdf_document.close()
+            
+            self.pdf_document = new_pdf_document
+            self.undo_stack.clear()
+            self.redo_stack.clear()
+            self.selected_pages.clear()
+            self.tk_images.clear()
+            for widget in list(self.scrollable_frame.winfo_children()): 
+                widget.destroy()
+            self.thumb_frames.clear()
+
+            self.active_page_index = 0
+            self._reconfigure_grid()
+            self.update_tool_button_states()
+            self.update_focus_display()
+            self._update_status("Utworzono nowy PDF ze stroną dopasowaną do obrazu. Odświeżanie miniatur...")
         except Exception as e:
             custom_messagebox(self.master, "Błąd", f"Nie można wczytać obrazu: {e}", typ="error")
-            return
-
-        # Przelicz piksele na punkty PDF (1 cal = 72 punkty)
-        image_width_pt = (image_width_px / image_dpi) * 72
-        image_height_pt = (image_height_px / image_dpi) * 72
-
-        # Stwórz nowy dokument PDF
-        self.pdf_document = fitz.open()
-        self.undo_stack.clear()
-        self.redo_stack.clear()
-        self.selected_pages.clear()
-        self.tk_images.clear()
-        for widget in list(self.scrollable_frame.winfo_children()): widget.destroy()
-        self.thumb_frames.clear()
-
-        # Nowa strona o rozmiarze obrazu
-        page = self.pdf_document.new_page(width=image_width_pt, height=image_height_pt)
-        rect = fitz.Rect(0, 0, image_width_pt, image_height_pt)
-        page.insert_image(rect, filename=image_path)
-
-        self.active_page_index = 0
-        self._reconfigure_grid()
-        self.update_tool_button_states()
-        self.update_focus_display()
-        self._update_status("Utworzono nowy PDF ze stroną dopasowaną do obrazu. Odświeżanie miniatur...")
     
     def import_pdf_after_active_page(self, event=None, filepath=None):
         if self.pdf_document is None:
@@ -5696,9 +5677,14 @@ class SelectablePDFViewer:
                 return
             export_mode = result[0]
         
+        # Pobierz nazwę bazową pliku
+        if hasattr(self, 'file_path') and self.file_path:
+            base_filename = os.path.splitext(os.path.basename(self.file_path))[0]
+        else:
+            base_filename = "dokument"
+        
         if export_mode == "single":
             # Wszystkie strony do jednego pliku
-            # Wybierz folder
             output_dir = filedialog.askdirectory(
                 title="Wybierz folder do zapisu PDF"
             )
@@ -5707,12 +5693,6 @@ class SelectablePDFViewer:
                 return
             
             try:
-                # Pobierz nazwę bazową
-                if hasattr(self, 'file_path') and self.file_path:
-                    base_filename = os.path.splitext(os.path.basename(self.file_path))[0]
-                else:
-                    base_filename = "dokument"
-                
                 # Utwórz zakres stron
                 if len(selected_indices) == 1:
                     page_range = str(selected_indices[0] + 1)
@@ -5724,12 +5704,26 @@ class SelectablePDFViewer:
                     output_dir, base_filename, page_range, "pdf"
                 )
                 
-                page_bytes = self._get_page_bytes(self.selected_pages)
-                num_extracted = len(self.selected_pages)
-                with open(filepath, "wb") as f:
-                    f.write(page_bytes)
-                self._update_status(f"Pomyślnie wyodrębniono {num_extracted} stron do: {filepath}")
+                # Deleguj do PDFTools
+                def progress_callback(current, total):
+                    if current == 0:
+                        self.show_progressbar(maximum=total)
+                    self.update_progressbar(current)
+                    if current == total:
+                        self.hide_progressbar()
+                
+                success = self.pdf_tools.extract_pages_to_single_pdf(
+                    self.pdf_document, selected_indices, filepath,
+                    progress_callback=self._update_status,
+                    progressbar_callback=progress_callback
+                )
+                
+                if success:
+                    self._update_status(f"Pomyślnie wyodrębniono {len(selected_indices)} stron do: {filepath}")
+                else:
+                    self._update_status(f"BŁĄD: Nie udało się wyodrębnić stron")
             except Exception as e:
+                self.hide_progressbar()
                 self._update_status(f"BŁĄD Eksportu: Nie udało się zapisać nowego pliku: {e}")
         else:
             # Każda strona do osobnego pliku
@@ -5741,31 +5735,19 @@ class SelectablePDFViewer:
                 return
             
             try:
-                # Pobierz nazwę bazową
-                if hasattr(self, 'file_path') and self.file_path:
-                    base_filename = os.path.splitext(os.path.basename(self.file_path))[0]
-                else:
-                    base_filename = "dokument"
+                # Deleguj do PDFTools
+                def progress_callback(current, total):
+                    if current == 0:
+                        self.show_progressbar(maximum=total)
+                    self.update_progressbar(current)
+                    if current == total:
+                        self.hide_progressbar()
                 
-                exported_count = 0
-                
-                self.show_progressbar(maximum=len(selected_indices))
-                self._update_status("Ekstrakcja stron do osobnych plików...")
-                
-                for idx, index in enumerate(selected_indices):
-                    # Utwórz dokument z jedną stroną
-                    page_bytes = self._get_page_bytes({index})
-                    
-                    # Generuj unikalną nazwę pliku
-                    single_page_range = str(index + 1)
-                    output_path = generate_unique_export_filename(
-                        output_dir, base_filename, single_page_range, "pdf"
-                    )
-                    
-                    with open(output_path, "wb") as f:
-                        f.write(page_bytes)
-                    exported_count += 1
-                    self.update_progressbar(idx + 1)
+                exported_count = self.pdf_tools.extract_pages_to_separate_pdfs(
+                    self.pdf_document, selected_indices, output_dir, base_filename,
+                    progress_callback=self._update_status,
+                    progressbar_callback=progress_callback
+                )
                 
                 self.hide_progressbar()
                 self._update_status(f"Pomyślnie wyodrębniono {exported_count} stron do folderu: {output_dir}")
@@ -6184,8 +6166,6 @@ class SelectablePDFViewer:
         Przed renderowaniem każda strona jest automatycznie obracana jeśli jej orientacja nie pasuje do komórki siatki.
         Marginesy i odstępy pobierane są z dialogu (osobno dla każdej krawędzi/osi).
         """
-        import io
-
         if not self.pdf_document:
             self._update_status("BŁĄD: Otwórz najpierw dokument PDF.")
             return
@@ -6196,6 +6176,7 @@ class SelectablePDFViewer:
         selected_indices = sorted(list(self.selected_pages))
         num_pages = len(selected_indices)
 
+        # Pokaż dialog ustawień
         dialog = MergePageGridDialog(self.master, page_count=num_pages, prefs_manager=self.prefs_manager)
         params = dialog.result
         if params is None:
@@ -6203,6 +6184,7 @@ class SelectablePDFViewer:
             return
 
         try:
+            # Konwersja jednostek z mm na punkty
             sheet_width_pt = params["sheet_width_mm"] * self.MM_TO_POINTS
             sheet_height_pt = params["sheet_height_mm"] * self.MM_TO_POINTS
             margin_top_pt = params["margin_top_mm"] * self.MM_TO_POINTS
@@ -6213,74 +6195,28 @@ class SelectablePDFViewer:
             spacing_y_pt = params["spacing_y_mm"] * self.MM_TO_POINTS
             rows = params["rows"]
             cols = params["cols"]
-
-            TARGET_DPI = params.get("dpi", 600)
-            PT_TO_INCH = 1 / 72
-
-            total_cells = rows * cols
-
-            # Poprawka: powielaj tylko jeśli jedna strona, przy wielu nie powielaj żadnej
-            if num_pages == 1:
-                source_pages = [selected_indices[0]] * total_cells
-            else:
-                source_pages = [selected_indices[i] if i < num_pages else None for i in range(total_cells)]
-
-            # Oblicz rozmiar komórki (punkt PDF)
-            if cols == 1:
-                cell_width = sheet_width_pt - margin_left_pt - margin_right_pt
-            else:
-                cell_width = (sheet_width_pt - margin_left_pt - margin_right_pt - (cols - 1) * spacing_x_pt) / cols
-            if rows == 1:
-                cell_height = sheet_height_pt - margin_top_pt - margin_bottom_pt
-            else:
-                cell_height = (sheet_height_pt - margin_top_pt - margin_bottom_pt - (rows - 1) * spacing_y_pt) / rows
+            target_dpi = params.get("dpi", 600)
 
             self._save_state_to_undo()
-            new_page = self.pdf_document.new_page(width=sheet_width_pt, height=sheet_height_pt)
-
-            self.show_progressbar(maximum=len(source_pages))
-            self._update_status("Scalanie stron w siatkę...")
             
-            for idx, src_idx in enumerate(source_pages):
-                row = idx // cols
-                col = idx % cols
-                if row >= rows:
-                    break
-                if src_idx is None:
-                    continue  # Pusta komórka
-
-                x = margin_left_pt + col * (cell_width + spacing_x_pt)
-                y = margin_top_pt + row * (cell_height + spacing_y_pt)
-
-                src_page = self.pdf_document[src_idx]
-                page_rect = src_page.rect
-                page_w = page_rect.width
-                page_h = page_rect.height
-
-                # Automatyczny obrót jeśli orientacja strony nie pasuje do komórki
-                page_landscape = page_w > page_h
-                cell_landscape = cell_width > cell_height
-                rotate = 0
-                if page_landscape != cell_landscape:
-                    rotate = 90  # Obróć o 90 stopni
-
-                # Skala renderowania: bitmapa ma dokładnie tyle pikseli, ile wynosi rozmiar komórki w punktach * 600 / 72
-                bitmap_w = int(round(cell_width * TARGET_DPI * PT_TO_INCH))
-                bitmap_h = int(round(cell_height * TARGET_DPI * PT_TO_INCH))
-
-                if rotate == 90:
-                    scale_x = bitmap_w / page_h
-                    scale_y = bitmap_h / page_w
-                else:
-                    scale_x = bitmap_w / page_w
-                    scale_y = bitmap_h / page_h
-
-                # Renderuj bitmapę w bardzo wysokiej rozdzielczości, z ewentualnym obrotem
-                pix = src_page.get_pixmap(matrix=fitz.Matrix(scale_x, scale_y).prerotate(rotate), alpha=False)
-                img_bytes = pix.tobytes("png")
-                rect = fitz.Rect(x, y, x + cell_width, y + cell_height)
-                new_page.insert_image(rect, stream=img_bytes)
-                self.update_progressbar(idx + 1)
+            # Deleguj do PDFTools
+            def progress_callback(current, total):
+                if current == 0:
+                    self.show_progressbar(maximum=total)
+                self.update_progressbar(current)
+                if current == total:
+                    self.hide_progressbar()
+            
+            self.pdf_tools.merge_pages_into_grid(
+                self.pdf_document, selected_indices, rows, cols,
+                sheet_width_pt, sheet_height_pt,
+                margin_top_pt, margin_bottom_pt,
+                margin_left_pt, margin_right_pt,
+                spacing_x_pt, spacing_y_pt,
+                target_dpi,
+                progress_callback=self._update_status,
+                progressbar_callback=progress_callback
+            )
 
             # Odświeżenie GUI
             self.hide_progressbar()
@@ -6292,7 +6228,7 @@ class SelectablePDFViewer:
             self.update_tool_button_states()
             self.update_focus_display()
             self._update_status(
-                f"Scalono {num_pages} stron w siatkę {rows}x{cols} na nowym arkuszu {params['format_name']} (bitmapy 600dpi). Odświeżanie miniatur..."
+                f"Scalono {num_pages} stron w siatkę {rows}x{cols} na nowym arkuszu {params['format_name']} (bitmapy {target_dpi}dpi). Odświeżanie miniatur..."
             )
         except Exception as e:
             self.hide_progressbar()
@@ -6829,45 +6765,33 @@ class SelectablePDFViewer:
         
         try:
             self._save_state_to_undo()
-            empty_pages = []
             
-            total_pages = len(self.pdf_document)
+            # Deleguj wykrywanie do PDFTools
+            def progress_callback(current, total):
+                if current == 0:
+                    self.show_progressbar(maximum=total)
+                self.update_progressbar(current)
+                if current == total:
+                    self.hide_progressbar()
             
-            # Pokaż pasek postępu dla skanowania stron
-            self.show_progressbar(maximum=total_pages)
-            self._update_status("Skanowanie pustych stron...")
-            
-            # Identyfikuj puste strony
-            for page_index in range(total_pages):
-                page = self.pdf_document[page_index]
-                text = page.get_text().strip()
-                
-                # Sprawdź czy strona ma tekst
-                if not text:
-                    # Sprawdź czy tło jest białe (bardzo prosty test)
-                    # Możemy sprawdzić czy są jakieś rysunki/obrazy
-                    drawings = page.get_drawings()
-                    images = page.get_images()
-                    
-                    # Jeśli brak tekstu, rysunków i obrazów - strona jest pusta
-                    if not drawings and not images:
-                        empty_pages.append(page_index)
-                
-                self.update_progressbar(page_index + 1)
+            empty_pages = self.pdf_tools.detect_empty_pages(
+                self.pdf_document,
+                progress_callback=self._update_status,
+                progressbar_callback=progress_callback
+            )
             
             if not empty_pages:
                 self.hide_progressbar()
                 custom_messagebox(self.master, "Informacja", "Nie znaleziono pustych stron w dokumencie.", typ="info")
                 return
             
-            # Zmień pasek na usuwanie stron
-            self.show_progressbar(maximum=len(empty_pages))
-            self._update_status("Usuwanie pustych stron...")
-            
-            # Usuń puste strony (od końca, żeby nie zmienić indeksów)
-            for idx, page_index in enumerate(reversed(empty_pages)):
-                self.pdf_document.delete_page(page_index)
-                self.update_progressbar(idx + 1)
+            # Deleguj usuwanie do PDFTools
+            deleted_count = self.pdf_tools.remove_empty_pages(
+                self.pdf_document,
+                empty_pages,
+                progress_callback=self._update_status,
+                progressbar_callback=progress_callback
+            )
             
             # Odśwież widok
             self.selected_pages.clear()
@@ -6883,7 +6807,7 @@ class SelectablePDFViewer:
             
             self.hide_progressbar()
             
-            self._update_status(f"Usunięto {len(empty_pages)} pustych stron. Odswieżanie miniatur...")
+            self._update_status(f"Usunięto {deleted_count} pustych stron. Odswieżanie miniatur...")
         except Exception as e:
             self.hide_progressbar()
             custom_messagebox(self.master, "Błąd", f"Nie udało się usunąć pustych stron:\n{e}", typ="error")

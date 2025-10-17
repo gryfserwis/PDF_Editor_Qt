@@ -861,7 +861,7 @@ class PDFTools:
             return False
     
     def export_pages_to_images(self, pdf_document, selected_indices: list, output_dir: str,
-                              base_filename: str, dpi: int, image_format: str,
+                              base_filename: str, dpi: int, image_format: str = 'png',
                               progress_callback: Optional[Callable[[str], None]] = None,
                               progressbar_callback: Optional[Callable[[int, int], None]] = None) -> list:
         """
@@ -893,18 +893,16 @@ class PDFTools:
         
         for idx, page_index in enumerate(selected_indices):
             page = pdf_document.load_page(page_index)
-            pix = page.get_pixmap(matrix=mat)
+            pix = page.get_pixmap(matrix=mat, alpha=False)
             
-            # Generuj nazwę pliku
-            output_path = os.path.join(output_dir, f"{base_filename}_page_{page_index + 1}.{image_format}")
+            # Generuj unikalną nazwę pliku
+            single_page_range = str(page_index + 1)
+            output_path = generate_unique_export_filename(
+                output_dir, base_filename, single_page_range, image_format
+            )
             
             # Zapisz obraz
-            if image_format.lower() == 'png':
-                pix.save(output_path)
-            elif image_format.lower() in ['jpg', 'jpeg']:
-                pix.save(output_path)
-            elif image_format.lower() in ['tif', 'tiff']:
-                pix.save(output_path)
+            pix.save(output_path)
             
             exported_files.append(output_path)
             
@@ -970,68 +968,323 @@ class PDFTools:
         except Exception:
             return None
     
+    def create_pdf_from_image_exact_size(self, image_filepath: str) -> Optional['fitz.Document']:
+        """
+        Tworzy nowy dokument PDF z obrazu.
+        Strona PDF będzie miała dokładnie taki rozmiar jak obraz (w punktach PDF).
+        
+        Args:
+            image_filepath: Ścieżka do pliku obrazu
+            
+        Returns:
+            Dokument fitz (PyMuPDF) lub None w przypadku błędu
+        """
+        try:
+            img = Image.open(image_filepath)
+            image_width_px, image_height_px = img.size
+            image_dpi = img.info.get('dpi', (96, 96))[0] if isinstance(img.info.get('dpi'), tuple) else 96
+            img.close()
+            
+            # Przelicz piksele na punkty PDF (1 cal = 72 punkty)
+            image_width_pt = (image_width_px / image_dpi) * 72
+            image_height_pt = (image_height_px / image_dpi) * 72
+            
+            # Stwórz nowy dokument PDF
+            pdf_document = fitz.open()
+            
+            # Nowa strona o rozmiarze obrazu
+            page = pdf_document.new_page(width=image_width_pt, height=image_height_pt)
+            rect = fitz.Rect(0, 0, image_width_pt, image_height_pt)
+            page.insert_image(rect, filename=image_filepath)
+            
+            return pdf_document
+            
+        except Exception:
+            return None
+    
     # ============================================================================
     # SCALANIE STRON W SIATKĘ
     # ============================================================================
     
     def merge_pages_into_grid(self, pdf_document, selected_indices: list, rows: int, cols: int,
-                             page_width: float, page_height: float,
+                             sheet_width_pt: float, sheet_height_pt: float,
+                             margin_top_pt: float, margin_bottom_pt: float,
+                             margin_left_pt: float, margin_right_pt: float,
+                             spacing_x_pt: float, spacing_y_pt: float,
+                             target_dpi: int = 600,
                              progress_callback: Optional[Callable[[str], None]] = None,
-                             progressbar_callback: Optional[Callable[[int, int], None]] = None) -> int:
+                             progressbar_callback: Optional[Callable[[int, int], None]] = None) -> None:
         """
-        Scala strony w siatkę na nowych stronach.
+        Scala strony w siatkę na nowym arkuszu.
+        Bitmapy renderowane są w wysokiej rozdzielczości (domyślnie 600dpi).
+        Przed renderowaniem każda strona jest automatycznie obracana jeśli jej orientacja nie pasuje do komórki siatki.
         
         Args:
             pdf_document: Dokument fitz (PyMuPDF)
             selected_indices: Lista indeksów stron do scalenia
             rows, cols: Liczba wierszy i kolumn w siatce
-            page_width, page_height: Rozmiar strony docelowej w punktach
+            sheet_width_pt, sheet_height_pt: Rozmiar arkusza w punktach
+            margin_top_pt, margin_bottom_pt, margin_left_pt, margin_right_pt: Marginesy w punktach
+            spacing_x_pt, spacing_y_pt: Odstępy między komórkami w punktach
+            target_dpi: Rozdzielczość renderowania bitmap (domyślnie 600)
             progress_callback: Funkcja callback dla statusu
             progressbar_callback: Funkcja callback dla paska postępu
-            
-        Returns:
-            Liczba utworzonych nowych stron
         """
         if progress_callback:
             progress_callback("Scalanie stron w siatkę...")
         
-        pages_per_grid = rows * cols
-        total_grids = (len(selected_indices) + pages_per_grid - 1) // pages_per_grid
+        num_pages = len(selected_indices)
+        total_cells = rows * cols
+        
+        # Poprawka: powielaj tylko jeśli jedna strona, przy wielu nie powielaj żadnej
+        if num_pages == 1:
+            source_pages = [selected_indices[0]] * total_cells
+        else:
+            source_pages = [selected_indices[i] if i < num_pages else None for i in range(total_cells)]
+        
+        # Oblicz rozmiar komórki
+        if cols == 1:
+            cell_width = sheet_width_pt - margin_left_pt - margin_right_pt
+        else:
+            cell_width = (sheet_width_pt - margin_left_pt - margin_right_pt - (cols - 1) * spacing_x_pt) / cols
+        if rows == 1:
+            cell_height = sheet_height_pt - margin_top_pt - margin_bottom_pt
+        else:
+            cell_height = (sheet_height_pt - margin_top_pt - margin_bottom_pt - (rows - 1) * spacing_y_pt) / rows
+        
+        new_page = pdf_document.new_page(width=sheet_width_pt, height=sheet_height_pt)
         
         if progressbar_callback:
-            progressbar_callback(0, total_grids)
+            progressbar_callback(0, len(source_pages))
         
-        cell_width = page_width / cols
-        cell_height = page_height / rows
+        PT_TO_INCH = 1 / 72
         
-        new_pages_count = 0
-        
-        for grid_idx in range(total_grids):
-            # Utwórz nową stronę dla siatki
-            new_page = pdf_document.new_page(width=page_width, height=page_height)
+        for idx, src_idx in enumerate(source_pages):
+            row = idx // cols
+            col = idx % cols
+            if row >= rows:
+                break
+            if src_idx is None:
+                continue  # Pusta komórka
             
-            # Wstaw strony do siatki
-            for row in range(rows):
-                for col in range(cols):
-                    page_idx_in_selection = grid_idx * pages_per_grid + row * cols + col
-                    if page_idx_in_selection >= len(selected_indices):
-                        break
-                    
-                    source_page_idx = selected_indices[page_idx_in_selection]
-                    source_page = pdf_document.load_page(source_page_idx)
-                    
-                    # Oblicz pozycję i rozmiar
-                    x = col * cell_width
-                    y = row * cell_height
-                    rect = fitz.Rect(x, y, x + cell_width, y + cell_height)
-                    
-                    # Wstaw stronę jako obraz
-                    src_rect = source_page.rect
-                    new_page.show_pdf_page(rect, pdf_document, source_page_idx, clip=src_rect)
+            x = margin_left_pt + col * (cell_width + spacing_x_pt)
+            y = margin_top_pt + row * (cell_height + spacing_y_pt)
             
-            new_pages_count += 1
+            src_page = pdf_document[src_idx]
+            page_rect = src_page.rect
+            page_w = page_rect.width
+            page_h = page_rect.height
+            
+            # Automatyczny obrót jeśli orientacja strony nie pasuje do komórki
+            page_landscape = page_w > page_h
+            cell_landscape = cell_width > cell_height
+            rotate = 0
+            if page_landscape != cell_landscape:
+                rotate = 90  # Obróć o 90 stopni
+            
+            # Skala renderowania: bitmapa ma dokładnie tyle pikseli, ile wynosi rozmiar komórki w punktach * DPI / 72
+            bitmap_w = int(round(cell_width * target_dpi * PT_TO_INCH))
+            bitmap_h = int(round(cell_height * target_dpi * PT_TO_INCH))
+            
+            if rotate == 90:
+                scale_x = bitmap_w / page_h
+                scale_y = bitmap_h / page_w
+            else:
+                scale_x = bitmap_w / page_w
+                scale_y = bitmap_h / page_h
+            
+            # Renderuj bitmapę w bardzo wysokiej rozdzielczości, z ewentualnym obrotem
+            pix = src_page.get_pixmap(matrix=fitz.Matrix(scale_x, scale_y).prerotate(rotate), alpha=False)
+            img_bytes = pix.tobytes("png")
+            rect = fitz.Rect(x, y, x + cell_width, y + cell_height)
+            new_page.insert_image(rect, stream=img_bytes)
             
             if progressbar_callback:
-                progressbar_callback(grid_idx + 1, total_grids)
+                progressbar_callback(idx + 1, len(source_pages))
+    
+    # ============================================================================
+    # WYKRYWANIE I USUWANIE PUSTYCH STRON
+    # ============================================================================
+    
+    def detect_empty_pages(self, pdf_document,
+                          progress_callback: Optional[Callable[[str], None]] = None,
+                          progressbar_callback: Optional[Callable[[int, int], None]] = None) -> list:
+        """
+        Wykrywa puste strony w dokumencie PDF.
+        Pusta strona = brak tekstu, rysunków i obrazów.
         
-        return new_pages_count
+        Args:
+            pdf_document: Dokument fitz (PyMuPDF)
+            progress_callback: Funkcja callback dla statusu
+            progressbar_callback: Funkcja callback dla paska postępu
+            
+        Returns:
+            Lista indeksów pustych stron
+        """
+        if progress_callback:
+            progress_callback("Skanowanie pustych stron...")
+        
+        empty_pages = []
+        total_pages = len(pdf_document)
+        
+        if progressbar_callback:
+            progressbar_callback(0, total_pages)
+        
+        for page_index in range(total_pages):
+            page = pdf_document[page_index]
+            text = page.get_text().strip()
+            
+            # Sprawdź czy strona ma tekst
+            if not text:
+                # Sprawdź czy są jakieś rysunki/obrazy
+                drawings = page.get_drawings()
+                images = page.get_images()
+                
+                # Jeśli brak tekstu, rysunków i obrazów - strona jest pusta
+                if not drawings and not images:
+                    empty_pages.append(page_index)
+            
+            if progressbar_callback:
+                progressbar_callback(page_index + 1, total_pages)
+        
+        return empty_pages
+    
+    def remove_empty_pages(self, pdf_document, empty_pages: list,
+                          progress_callback: Optional[Callable[[str], None]] = None,
+                          progressbar_callback: Optional[Callable[[int, int], None]] = None) -> int:
+        """
+        Usuwa puste strony z dokumentu PDF.
+        
+        Args:
+            pdf_document: Dokument fitz (PyMuPDF)
+            empty_pages: Lista indeksów pustych stron
+            progress_callback: Funkcja callback dla statusu
+            progressbar_callback: Funkcja callback dla paska postępu
+            
+        Returns:
+            Liczba usuniętych stron
+        """
+        if progress_callback:
+            progress_callback("Usuwanie pustych stron...")
+        
+        if progressbar_callback:
+            progressbar_callback(0, len(empty_pages))
+        
+        # Usuń puste strony (od końca, żeby nie zmienić indeksów)
+        for idx, page_index in enumerate(reversed(empty_pages)):
+            pdf_document.delete_page(page_index)
+            if progressbar_callback:
+                progressbar_callback(idx + 1, len(empty_pages))
+        
+        return len(empty_pages)
+    
+    # ============================================================================
+    # ODWRACANIE KOLEJNOŚCI STRON
+    # ============================================================================
+    
+    def reverse_pages(self, pdf_document,
+                     progress_callback: Optional[Callable[[str], None]] = None,
+                     progressbar_callback: Optional[Callable[[int, int], None]] = None):
+        """
+        Odwraca kolejność wszystkich stron w dokumencie PDF.
+        Zwraca nowy dokument z odwróconą kolejnością stron.
+        
+        Args:
+            pdf_document: Dokument fitz (PyMuPDF)
+            progress_callback: Funkcja callback dla statusu
+            progressbar_callback: Funkcja callback dla paska postępu
+            
+        Returns:
+            Nowy dokument fitz z odwróconą kolejnością stron
+        """
+        if progress_callback:
+            progress_callback("Odwracanie kolejności stron...")
+        
+        page_count = len(pdf_document)
+        new_doc = fitz.open()
+        
+        if progressbar_callback:
+            progressbar_callback(0, page_count)
+        
+        for idx, i in enumerate(range(page_count - 1, -1, -1)):
+            new_doc.insert_pdf(pdf_document, from_page=i, to_page=i)
+            if progressbar_callback:
+                progressbar_callback(idx + 1, page_count)
+        
+        return new_doc
+    
+    # ============================================================================
+    # EKSPORT STRON DO PDF
+    # ============================================================================
+    
+    def extract_pages_to_single_pdf(self, pdf_document, selected_indices: list, 
+                                    output_filepath: str,
+                                    progress_callback: Optional[Callable[[str], None]] = None,
+                                    progressbar_callback: Optional[Callable[[int, int], None]] = None) -> bool:
+        """
+        Ekstraktuje wybrane strony do jednego pliku PDF.
+        
+        Args:
+            pdf_document: Dokument fitz (PyMuPDF)
+            selected_indices: Lista indeksów stron do ekstraktowania
+            output_filepath: Ścieżka do pliku wyjściowego
+            progress_callback: Funkcja callback dla statusu
+            progressbar_callback: Funkcja callback dla paska postępu
+            
+        Returns:
+            True jeśli sukces, False w przeciwnym razie
+        """
+        if progress_callback:
+            progress_callback("Ekstrakcja stron do PDF...")
+        
+        try:
+            # Użyj istniejącej metody export_pages_to_pdf
+            return self.export_pages_to_pdf(pdf_document, selected_indices, output_filepath,
+                                           progress_callback, progressbar_callback)
+        except Exception as e:
+            if progress_callback:
+                progress_callback(f"BŁĄD: {e}")
+            return False
+    
+    def extract_pages_to_separate_pdfs(self, pdf_document, selected_indices: list,
+                                      output_dir: str, base_filename: str,
+                                      progress_callback: Optional[Callable[[str], None]] = None,
+                                      progressbar_callback: Optional[Callable[[int, int], None]] = None) -> int:
+        """
+        Ekstraktuje każdą stronę do osobnego pliku PDF.
+        
+        Args:
+            pdf_document: Dokument fitz (PyMuPDF)
+            selected_indices: Lista indeksów stron do ekstraktowania
+            output_dir: Katalog wyjściowy
+            base_filename: Nazwa bazowa plików
+            progress_callback: Funkcja callback dla statusu
+            progressbar_callback: Funkcja callback dla paska postępu
+            
+        Returns:
+            Liczba wyekstraktowanych plików
+        """
+        if progress_callback:
+            progress_callback("Ekstrakcja stron do osobnych plików...")
+        
+        exported_count = 0
+        
+        if progressbar_callback:
+            progressbar_callback(0, len(selected_indices))
+        
+        for idx, page_index in enumerate(selected_indices):
+            # Generuj nazwę pliku
+            single_page_range = str(page_index + 1)
+            output_path = generate_unique_export_filename(
+                output_dir, base_filename, single_page_range, "pdf"
+            )
+            
+            # Ekstraktuj pojedynczą stronę
+            success = self.export_pages_to_pdf(pdf_document, [page_index], output_path)
+            if success:
+                exported_count += 1
+            
+            if progressbar_callback:
+                progressbar_callback(idx + 1, len(selected_indices))
+        
+        return exported_count
