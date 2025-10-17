@@ -8,9 +8,10 @@ Projekt został zrefaktoryzowany w celu poprawy organizacji kodu i ułatwienia u
 
 ### Statystyki
 - **Przed refaktoryzacją**: PDFEditor.py miał 8009 linii kodu
-- **Po refaktoryzacji**: PDFEditor.py ma 7619 linii (390 linii przeniesiono do modułów)
-- **Utworzono**: 7 nowych plików modułowych
-- **Struktura**: 3 nowe pakiety (utils/, core/, gui/)
+- **Po pierwszej refaktoryzacji**: PDFEditor.py ma 7619 linii (390 linii przeniesiono do modułów)
+- **Po refaktoryzacji dialogów**: PDFEditor.py ma 4124 linii (3129 linii przeniesiono do gui/dialogs/)
+- **Utworzono**: 20 nowych plików modułowych
+- **Struktura**: 3 pakiety (utils/, core/, gui/) + 13 plików dialogowych
 
 ### Wyodrębnione Komponenty
 
@@ -20,29 +21,56 @@ Projekt został zrefaktoryzowany w celu poprawy organizacji kodu i ułatwienia u
    - Widget Tooltip
    - Niestandardowe okna dialogowe
 
-2. **Core Package** (154 linii)
+2. **Core Package** (~800 linii)
    - PreferencesManager - zarządzanie preferencjami
+   - PDFTools - operacje na plikach PDF
+   - MacroManager - system makr
 
-3. **Main Application** (7619 linii)
-   - Wszystkie klasy dialogów
+3. **GUI Package** (~3200 linii)
+   - 13 klas dialogowych w osobnych plikach
+   - PreferencesDialog, PageCropResizeDialog, PageNumberingDialog
+   - PageNumberMarginDialog, ShiftContentDialog, ImageImportSettingsDialog
+   - EnhancedPageRangeDialog, MergePageGridDialog, MacroEditDialog
+   - MacroRecordingDialog, MacrosListDialog, MergePDFDialog, PDFAnalysisDialog
+
+4. **Main Application** (4124 linii)
    - Główna klasa SelectablePDFViewer
-   - Logika operacji PDF
+   - Logika głównego okna aplikacji
 
 ## Struktura Katalogów
 
 ```
 PDF_Editor_Qt/
-├── PDFEditor.py           # Główny plik aplikacji
-├── core/                  # Moduły podstawowe
+├── PDFEditor.py           # Główny plik aplikacji (4124 linii)
+├── core/                  # Moduły podstawowe (~800 linii)
 │   ├── __init__.py
-│   └── preferences_manager.py  # Zarządzanie preferencjami
-├── utils/                 # Funkcje pomocnicze i narzędzia
+│   ├── preferences_manager.py  # Zarządzanie preferencjami
+│   ├── pdf_tools.py            # Operacje na PDF
+│   └── macro_manager.py        # System makr
+├── utils/                 # Funkcje pomocnicze i narzędzia (~256 linii)
 │   ├── __init__.py
 │   ├── constants.py       # Stałe aplikacji
 │   ├── helpers.py         # Funkcje pomocnicze
 │   ├── messagebox.py      # Niestandardowe okna dialogowe
 │   └── tooltip.py         # Widget tooltip
-├── gui/                   # (Katalog zarezerwowany na przyszłe komponenty GUI)
+├── gui/                   # Komponenty GUI (~3200 linii)
+│   ├── __init__.py
+│   └── dialogs/           # Okna dialogowe
+│       ├── __init__.py
+│       ├── preferences_dialog.py          # Dialog preferencji
+│       ├── page_crop_resize_dialog.py     # Kadrowanie i zmiana rozmiaru
+│       ├── page_numbering_dialog.py       # Numeracja stron
+│       ├── page_number_margin_dialog.py   # Marginesy numeracji
+│       ├── shift_content_dialog.py        # Przesunięcie zawartości
+│       ├── image_import_settings_dialog.py # Ustawienia importu obrazu
+│       ├── enhanced_page_range_dialog.py  # Wybór zakresu stron
+│       ├── merge_page_grid_dialog.py      # Scalanie stron w siatkę
+│       ├── macro_edit_dialog.py           # Edycja makra
+│       ├── macro_recording_dialog.py      # Nagrywanie makra
+│       ├── macros_list_dialog.py          # Lista makr
+│       ├── merge_pdf_dialog.py            # Scalanie PDF
+│       └── pdf_analysis_dialog.py         # Analiza dokumentu PDF
+├── icons/                 # Ikony aplikacji
 ├── STRUCTURE.md           # Ta dokumentacja
 └── validate_structure.py  # Skrypt walidacji struktury
 ```
@@ -234,22 +262,43 @@ Klasa narzędziowa do operacji na dokumentach PDF:
   - `remove_empty_pages()` - Usuwa puste strony z dokumentu
   - `reverse_pages()` - Odwraca kolejność wszystkich stron w dokumencie
 
+### gui/dialogs/ - Okna Dialogowe
+
+Wszystkie okna dialogowe wydzielone do osobnych plików:
+
+**Dialogi podstawowe:**
+- `preferences_dialog.py` - PreferencesDialog - Preferencje programu
+- `page_crop_resize_dialog.py` - PageCropResizeDialog - Kadrowanie i zmiana rozmiaru
+- `page_numbering_dialog.py` - PageNumberingDialog - Numeracja stron  
+- `page_number_margin_dialog.py` - PageNumberMarginDialog - Marginesy numeracji
+- `shift_content_dialog.py` - ShiftContentDialog - Przesunięcie zawartości
+
+**Dialogi importu/eksportu:**
+- `image_import_settings_dialog.py` - ImageImportSettingsDialog - Ustawienia importu obrazów
+- `enhanced_page_range_dialog.py` - EnhancedPageRangeDialog - Wybór zakresów stron
+- `merge_pdf_dialog.py` - MergePDFDialog - Scalanie plików PDF
+
+**Dialogi zaawansowane:**
+- `merge_page_grid_dialog.py` - MergePageGridDialog - Scalanie stron w siatkę
+- `pdf_analysis_dialog.py` - PDFAnalysisDialog - Analiza dokumentu PDF
+
+**Dialogi makr:**
+- `macro_edit_dialog.py` - MacroEditDialog - Edycja makr (GUI, używa MacroManager)
+- `macro_recording_dialog.py` - MacroRecordingDialog - Nagrywanie makr (GUI, używa MacroManager)
+- `macros_list_dialog.py` - MacrosListDialog - Lista makr (GUI, używa MacroManager)
+
+Wszystkie dialogi:
+- Dziedziczą po `tk.Toplevel`
+- Używają wspólnych narzędzi z modułu `utils` (custom_messagebox, validate_float_range, etc.)
+- Zapisują swoje preferencje przez `PreferencesManager`
+- Są importowane w PDFEditor.py przez `from gui.dialogs import ...`
+
 ### PDFEditor.py - Główna Aplikacja
 
-Zawiera wszystkie pozostałe komponenty:
+Zawiera główną klasę aplikacji:
 
-**Klasy dialogów:**
-- PreferencesDialog - Preferencje programu
-- PageCropResizeDialog - Kadrowanie i zmiana rozmiaru
-- PageNumberingDialog - Numeracja stron  
-- PageNumberMarginDialog - Marginesy numeracji
-- ShiftContentDialog - Przesunięcie zawartości
-- ImageImportSettingsDialog - Ustawienia importu obrazów
-- EnhancedPageRangeDialog - Wybór zakresów stron
-- ThumbnailFrame - Ramka miniatury strony
-- MergePageGridDialog - Scalanie stron w siatkę
-- MacroEditDialog - Edycja makr (GUI, używa MacroManager)
-- MacroRecordingDialog - Nagrywanie makr (GUI, używa MacroManager)
+**Główna klasa:**
+- SelectablePDFViewer - Główne okno aplikacji z podglądem miniatur PDF
 - MacrosListDialog - Lista makr (GUI, używa MacroManager)
 - MergePDFDialog - Scalanie plików PDF
 - PDFAnalysisDialog - Analiza dokumentu PDF
@@ -419,13 +468,21 @@ Import Check:     ✓ PASS
 
 Planowane są następujące rozszerzenia refaktoryzacji:
 
-### 1. gui/dialogs/ - Dialogi w osobnych plikach
-Przeniesienie każdego dialogu do osobnego pliku:
-- `gui/dialogs/preferences_dialog.py`
-- `gui/dialogs/page_crop_resize_dialog.py`
-- `gui/dialogs/page_numbering_dialog.py`
-- `gui/dialogs/shift_content_dialog.py`
-- etc.
+### 1. gui/dialogs/ - Dialogi w osobnych plikach ✅ ZREALIZOWANE
+Każdy dialog przeniesiony do osobnego pliku:
+- ✅ `gui/dialogs/preferences_dialog.py` - PreferencesDialog
+- ✅ `gui/dialogs/page_crop_resize_dialog.py` - PageCropResizeDialog
+- ✅ `gui/dialogs/page_numbering_dialog.py` - PageNumberingDialog
+- ✅ `gui/dialogs/page_number_margin_dialog.py` - PageNumberMarginDialog
+- ✅ `gui/dialogs/shift_content_dialog.py` - ShiftContentDialog
+- ✅ `gui/dialogs/image_import_settings_dialog.py` - ImageImportSettingsDialog
+- ✅ `gui/dialogs/enhanced_page_range_dialog.py` - EnhancedPageRangeDialog
+- ✅ `gui/dialogs/merge_page_grid_dialog.py` - MergePageGridDialog
+- ✅ `gui/dialogs/macro_edit_dialog.py` - MacroEditDialog
+- ✅ `gui/dialogs/macro_recording_dialog.py` - MacroRecordingDialog
+- ✅ `gui/dialogs/macros_list_dialog.py` - MacrosListDialog
+- ✅ `gui/dialogs/merge_pdf_dialog.py` - MergePDFDialog
+- ✅ `gui/dialogs/pdf_analysis_dialog.py` - PDFAnalysisDialog
 
 ### 2. core/pdf_tools.py - Operacje na PDF ✅ ZREALIZOWANE
 Wydzielenie operacji PDF do klasy narzędziowej PDFTools:
@@ -447,7 +504,7 @@ Zarządzanie makrami w dedykowanej klasie MacroManager:
 - ✅ Pobieranie danych makr (get_macro, get_all_macros)
 - ✅ Zarządzanie listą makr (save_macro, delete_macro, update_macro, duplicate_macro)
 - ✅ Sprawdzanie stanu (is_recording, macro_exists)
-- ✅ Dialogi makr (MacroEditDialog, MacroRecordingDialog, MacrosListDialog) pozostają w PDFEditor.py
+- ✅ Dialogi makr (MacroEditDialog, MacroRecordingDialog, MacrosListDialog) wydzielone do gui/dialogs/
 - ✅ Brak kodu GUI/tkinter w MacroManager
 
 ### 4. gui/main_window.py - Główne okno
@@ -539,21 +596,29 @@ Po refaktoryzacji należy przetestować:
 
 ## Metryki Refaktoryzacji
 
-| Metryka | Przed | Po | Zmiana |
-|---------|-------|-----|--------|
-| Linie kodu w PDFEditor.py | 8009 | 7619 | -390 (-4.9%) |
-| Liczba plików Python | 2 | 9 | +7 |
-| Liczba pakietów | 0 | 3 | +3 |
-| Linie w modułach utils/ | 0 | 256 | +256 |
-| Linie w modułach core/ | 0 | 154 | +154 |
-| Całkowita liczba linii | 8009 | 8029 | +20 |
+| Metryka | Przed | Po pierwszej refaktoryzacji | Po refaktoryzacji dialogów | Łączna zmiana |
+|---------|-------|----------------------------|---------------------------|---------------|
+| Linie kodu w PDFEditor.py | 8009 | 7619 | 4124 | -3885 (-48.5%) |
+| Liczba plików Python | 2 | 9 | 22 | +20 |
+| Liczba pakietów | 0 | 3 | 3 | +3 |
+| Linie w modułach utils/ | 0 | 256 | 256 | +256 |
+| Linie w modułach core/ | 0 | 154 | ~800 | +800 |
+| Linie w modułach gui/ | 0 | 0 | ~3200 | +3200 |
+| Całkowita liczba linii | 8009 | 8029 | ~8380 | +371 |
+
+**Szczegóły refaktoryzacji dialogów:**
+- 13 klas dialogowych wydzielonych do osobnych plików
+- PDFEditor.py zmniejszony o 3129 linii (-43%)
+- Średnia wielkość pliku dialogu: ~246 linii
+- Każdy dialog w osobnym pliku dla lepszej czytelności
 
 **Korzyści:**
-- ✅ Lepsza organizacja kodu
-- ✅ Łatwiejsze utrzymanie
+- ✅ Lepsza organizacja kodu - kod dialogów wydzielony do gui/dialogs/
+- ✅ Łatwiejsze utrzymanie - każdy dialog w osobnym pliku
 - ✅ Możliwość wielokrotnego użycia modułów
-- ✅ Lepsza testowalność
-- ✅ Przygotowanie do dalszej refaktoryzacji
+- ✅ Lepsza testowalność - izolowane komponenty
+- ✅ Łatwiejsze wyszukiwanie i edycja konkretnych dialogów
+- ✅ Zmniejszenie złożoności głównego pliku (PDFEditor.py z 8009 do 4124 linii)
 
 ## Autorzy
 
