@@ -66,18 +66,18 @@ class ThumbnailWidget(QFrame):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(4)
         
-        # Page number label
-        self.page_label = QLabel(f"Strona {page_index + 1}")
-        self.page_label.setAlignment(Qt.AlignCenter)
-        self.page_label.setStyleSheet(f"color: {FG_TEXT}; font-weight: bold; background: transparent; border: none;")
-        layout.addWidget(self.page_label)
-        
         # Image label
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setStyleSheet("background: white; border: 1px solid #C0C0C0;")
         layout.addWidget(self.image_label)
         
+        # Page number label (pod miniaturą)
+        self.page_label = QLabel(f"Strona {page_index + 1}")
+        self.page_label.setAlignment(Qt.AlignCenter)
+        self.page_label.setStyleSheet(f"color: {FG_TEXT}; font-weight: bold; background: transparent; border: none;")
+        layout.addWidget(self.page_label)
+
         # Size label
         self.size_label = QLabel("")
         self.size_label.setAlignment(Qt.AlignCenter)
@@ -170,7 +170,6 @@ class PDFViewerWidget(QWidget):
             item = self.grid_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
-    
     def render_thumbnails(self):
         """Render all PDF pages as thumbnails"""
         if not self.pdf_document:
