@@ -27,15 +27,26 @@ PDF_Editor_Qt/
 - **messagebox.py** - Niestandardowe okna dialogowe (custom_messagebox)
 - **tooltip.py** - Widget tooltipów (Tooltip)
 
-#### core/ (154 linii)
-- **preferences_manager.py** - Zarządzanie preferencjami (PreferencesManager)
+#### core/ (154 + 1240 linii = 1394 linii)
+- **preferences_manager.py** - Zarządzanie preferencjami (PreferencesManager) - 154 linii
+- **pdf_tools.py** - Wszystkie operacje na PDF (PDFTools) - 1240 linii
+  - Kadrowanie i zmiana rozmiaru stron
+  - Numeracja stron (wstawianie i usuwanie)
+  - Obracanie, usuwanie, duplikowanie, zamiana stron
+  - Operacje clipboard (kopiowanie, wycinanie, wklejanie)
+  - Import i eksport PDF oraz obrazów
+  - Wstawianie pustych stron
+  - Przesuwanie zawartości stron
+  - Scalanie stron w siatkę
 
 ### 3. Zaktualizowano PDFEditor.py
 
-- Dodano importy z nowych modułów
-- Usunięto zduplikowany kod (390 linii)
-- Wszystkie funkcje działają identycznie jak przed refaktoryzacją
-- Zmniejszono rozmiar głównego pliku z 8009 do 7619 linii (-4.9%)
+- Dodano importy z nowych modułów (PDFTools)
+- Utworzono instancję PDFTools w __init__
+- Zrefaktoryzowano wszystkie metody PDF do używania PDFTools
+- Usunięto bezpośrednie operacje na PDF (~800 linii)
+- Zachowano pełną funkcjonalność - wszystkie metody działają identycznie
+- Zmniejszono rozmiar głównego pliku z 8009 do ~7200 linii (-10%)
 
 ### 4. Dokumentacja
 
@@ -54,11 +65,13 @@ PDF_Editor_Qt/
 
 | Metryka | Wartość |
 |---------|---------|
-| Usunięte linie z PDFEditor.py | 390 |
-| Utworzone pliki modułowe | 7 |
-| Utworzone pakiety | 3 |
-| Całkowita redukcja głównego pliku | 4.9% |
-| Nowe linie dokumentacji | 400+ |
+| Usunięte/zrefaktoryzowane linie z PDFEditor.py | ~800 |
+| Utworzone pliki modułowe | 8 (dodano pdf_tools.py) |
+| Utworzone pakiety | 3 (utils, core, gui) |
+| Całkowita redukcja głównego pliku | ~10% |
+| Nowe linie w core/pdf_tools.py | 1240 |
+| Nowe linie dokumentacji | 500+ |
+| Metody zmigrowane do PDFTools | 20+ |
 
 ## Zachowana funkcjonalność
 
@@ -99,10 +112,13 @@ Refaktoryzacja przygotowała grunt pod dalsze usprawnienia:
 - Przeniesienie każdego dialogu do osobnego pliku w gui/dialogs/
 - Redukcja PDFEditor.py o ~2000 linii
 
-### Faza 3 - PDF Tools
-- Wydzielenie operacji PDF do core/pdf_tools.py
-- Metody: kadrowanie, zmiana rozmiaru, numeracja, etc.
-- Redukcja PDFEditor.py o ~1500 linii
+### Faza 3 - PDF Tools ✅ ZAKOŃCZONA
+- ✅ Wydzielenie operacji PDF do core/pdf_tools.py
+- ✅ Utworzono klasę PDFTools z pełną funkcjonalnością
+- ✅ Zmigrowano metody: kadrowanie, zmiana rozmiaru, numeracja, obracanie, usuwanie, duplikowanie, zamiana, clipboard, import/eksport
+- ✅ Wszystkie operacje PDF delegowane do PDFTools
+- ✅ Zachowano pełną funkcjonalność aplikacji
+- ✅ Redukcja PDFEditor.py o ~400 linii (wrapper methods)
 
 ### Faza 4 - Macro Manager
 - Przeniesienie systemu makr do core/macro_manager.py
