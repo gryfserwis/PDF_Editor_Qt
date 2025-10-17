@@ -28,6 +28,7 @@ def check_module_structure():
         ("utils", "Utils package directory"),
         ("core", "Core package directory"),
         ("gui", "GUI package directory"),
+        ("gui/dialogs", "GUI dialogs directory"),
     ]
     
     for dirname, desc in dirs:
@@ -58,9 +59,36 @@ def check_module_structure():
     core_files = [
         ("core/__init__.py", "Core package init"),
         ("core/preferences_manager.py", "Preferences manager module"),
+        ("core/pdf_tools.py", "PDF tools module"),
+        ("core/macro_manager.py", "Macro manager module"),
     ]
     
     for filepath, desc in core_files:
+        if not check_file_exists(filepath, desc):
+            all_ok = False
+    
+    print()
+    
+    # Check gui module files
+    gui_files = [
+        ("gui/__init__.py", "GUI package init"),
+        ("gui/dialogs/__init__.py", "GUI dialogs package init"),
+        ("gui/dialogs/preferences_dialog.py", "Preferences dialog"),
+        ("gui/dialogs/page_crop_resize_dialog.py", "Page crop resize dialog"),
+        ("gui/dialogs/page_numbering_dialog.py", "Page numbering dialog"),
+        ("gui/dialogs/page_number_margin_dialog.py", "Page number margin dialog"),
+        ("gui/dialogs/shift_content_dialog.py", "Shift content dialog"),
+        ("gui/dialogs/image_import_settings_dialog.py", "Image import settings dialog"),
+        ("gui/dialogs/enhanced_page_range_dialog.py", "Enhanced page range dialog"),
+        ("gui/dialogs/merge_page_grid_dialog.py", "Merge page grid dialog"),
+        ("gui/dialogs/macro_edit_dialog.py", "Macro edit dialog"),
+        ("gui/dialogs/macro_recording_dialog.py", "Macro recording dialog"),
+        ("gui/dialogs/macros_list_dialog.py", "Macros list dialog"),
+        ("gui/dialogs/merge_pdf_dialog.py", "Merge PDF dialog"),
+        ("gui/dialogs/pdf_analysis_dialog.py", "PDF analysis dialog"),
+    ]
+    
+    for filepath, desc in gui_files:
         if not check_file_exists(filepath, desc):
             all_ok = False
     
@@ -145,6 +173,23 @@ def check_syntax():
         "utils/tooltip.py",
         "core/__init__.py",
         "core/preferences_manager.py",
+        "core/pdf_tools.py",
+        "core/macro_manager.py",
+        "gui/__init__.py",
+        "gui/dialogs/__init__.py",
+        "gui/dialogs/preferences_dialog.py",
+        "gui/dialogs/page_crop_resize_dialog.py",
+        "gui/dialogs/page_numbering_dialog.py",
+        "gui/dialogs/page_number_margin_dialog.py",
+        "gui/dialogs/shift_content_dialog.py",
+        "gui/dialogs/image_import_settings_dialog.py",
+        "gui/dialogs/enhanced_page_range_dialog.py",
+        "gui/dialogs/merge_page_grid_dialog.py",
+        "gui/dialogs/macro_edit_dialog.py",
+        "gui/dialogs/macro_recording_dialog.py",
+        "gui/dialogs/macros_list_dialog.py",
+        "gui/dialogs/merge_pdf_dialog.py",
+        "gui/dialogs/pdf_analysis_dialog.py",
     ]
     
     all_ok = True
