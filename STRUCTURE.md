@@ -201,7 +201,8 @@ Klasa narzędziowa do operacji na dokumentach PDF:
   
   **Metody numeracji:**
   - `insert_page_numbers()` - Wstawia numerację na stronach
-  - `remove_page_numbers()` - Usuwa numerację z marginesów
+  - `remove_page_numbers()` - Usuwa numerację z marginesów (prostsze usuwanie prostokątne)
+  - `remove_page_numbers_by_pattern()` - Usuwa numerację poprzez wykrywanie wzorców tekstowych (zaawansowane)
   
   **Metody manipulacji stronami:**
   - `rotate_pages()` - Obraca strony o zadany kąt
