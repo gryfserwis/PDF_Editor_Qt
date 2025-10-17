@@ -6044,34 +6044,32 @@ class SelectablePDFViewer:
             self._save_state_to_undo()
 
             sorted_pages = sorted(self.selected_pages)
-            new_page_indices = set()
-            offset = 0
+            
+            # Pobierz rozmiar z pierwszej strony jeśli możliwe
+            try:
+                rect = self.pdf_document[sorted_pages[0]].rect
+                width = rect.width
+                height = rect.height  
+            except Exception:
+                pass  # Zostaw domyślne A4
 
-            # Pokaż pasek postępu
-            self.show_progressbar(maximum=len(sorted_pages))
-            self._update_status("Wstawianie pustych stron...")
-
-            for idx, page_index in enumerate(sorted_pages):
-                try:
-                    rect = self.pdf_document[page_index + offset].rect
-                    width = rect.width
-                    height = rect.height  
-                except Exception:
-                    pass  # Zostaw domyślne
-
-                if before:
-                    target_page = page_index + offset
-                else:
-                    target_page = page_index + 1 + offset
-
-                self.pdf_document.insert_page(
-                    pno=target_page,  
-                    width=width,  
-                    height=height
-                )
-                new_page_indices.add(target_page)
-                offset += 1
-                self.update_progressbar(idx + 1)
+            # Deleguj do PDFTools
+            def progress_callback(current, total):
+                if current == 0:
+                    self.show_progressbar(maximum=total)
+                self.update_progressbar(current)
+                if current == total:
+                    self.hide_progressbar()
+            
+            new_page_indices = self.pdf_tools.insert_blank_pages(
+                self.pdf_document,
+                sorted_pages,
+                before,
+                width,
+                height,
+                progress_callback=self._update_status,
+                progressbar_callback=progress_callback
+            )
 
             self.selected_pages = new_page_indices
 
@@ -6083,8 +6081,6 @@ class SelectablePDFViewer:
             self.update_selection_display()
             self.update_tool_button_states()
             self.update_focus_display()
-
-            self.hide_progressbar()
             
             if num_selected == 1:
                 self._update_status(f"Wstawiono nową, pustą stronę. Aktualna liczba stron: {len(self.pdf_document)}. Odświeżanie miniatur...")
@@ -6127,16 +6123,10 @@ class SelectablePDFViewer:
             for idx_progress, original_index in enumerate(sorted_pages):
                 # Po każdej insercji kolejne strony są przesunięte o offset
                 idx = original_index + offset
-
-                temp_doc = fitz.open()
-                temp_doc.insert_pdf(self.pdf_document, from_page=idx, to_page=idx)
-                self.pdf_document.insert_pdf(
-                    temp_doc,
-                    from_page=0,
-                    to_page=0,
-                    start_at=idx + 1
-                )
-                temp_doc.close()
+                
+                # Użyj PDFTools do duplikacji
+                self.pdf_tools.duplicate_page(self.pdf_document, idx, idx + 1)
+                
                 # Wstawiona strona jest zawsze na pozycji idx+1
                 new_page_indices.add(idx + 1)
                 offset += 1
@@ -6172,7 +6162,6 @@ class SelectablePDFViewer:
         try:
             self._save_state_to_undo()
             
-            # Pokaż pasek postępu (4 kroki: kopiuj stronę 1, kopiuj stronę 2, usuń, wstaw)
             self.show_progressbar(maximum=4)
             self._update_status("Zamiana stron miejscami...")
             
@@ -6181,27 +6170,9 @@ class SelectablePDFViewer:
             page1_idx = pages[0]
             page2_idx = pages[1]
             
-            # Create temporary documents for both pages
-            temp_doc1 = fitz.open()
-            temp_doc1.insert_pdf(self.pdf_document, from_page=page1_idx, to_page=page1_idx)
-            self.update_progressbar(1)
-            
-            temp_doc2 = fitz.open()
-            temp_doc2.insert_pdf(self.pdf_document, from_page=page2_idx, to_page=page2_idx)
-            self.update_progressbar(2)
-            
-            # Delete both pages (delete higher index first to maintain lower index)
-            self.pdf_document.delete_page(page2_idx)
-            self.pdf_document.delete_page(page1_idx)
-            self.update_progressbar(3)
-            
-            # Insert them in swapped positions
-            self.pdf_document.insert_pdf(temp_doc2, from_page=0, to_page=0, start_at=page1_idx)
-            self.pdf_document.insert_pdf(temp_doc1, from_page=0, to_page=0, start_at=page2_idx)
+            # Deleguj do PDFTools
+            self.pdf_tools.swap_pages(self.pdf_document, page1_idx, page2_idx)
             self.update_progressbar(4)
-            
-            temp_doc1.close()
-            temp_doc2.close()
             
             # Odśwież tylko zamienione miniatury
             self.update_single_thumbnail(page1_idx)
