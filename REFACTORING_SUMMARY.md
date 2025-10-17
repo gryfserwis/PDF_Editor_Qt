@@ -27,9 +27,9 @@ PDF_Editor_Qt/
 - **messagebox.py** - Niestandardowe okna dialogowe (custom_messagebox)
 - **tooltip.py** - Widget tooltipów (Tooltip)
 
-#### core/ (154 + 1240 linii = 1394 linii)
+#### core/ (154 + 1400 linii = 1554 linii)
 - **preferences_manager.py** - Zarządzanie preferencjami (PreferencesManager) - 154 linii
-- **pdf_tools.py** - Wszystkie operacje na PDF (PDFTools) - 1240 linii
+- **pdf_tools.py** - Wszystkie operacje na PDF (PDFTools) - 1400 linii
   - Kadrowanie i zmiana rozmiaru stron
   - Numeracja stron (wstawianie i usuwanie)
   - Obracanie, usuwanie, duplikowanie, zamiana stron
@@ -37,7 +37,10 @@ PDF_Editor_Qt/
   - Import i eksport PDF oraz obrazów
   - Wstawianie pustych stron
   - Przesuwanie zawartości stron
-  - Scalanie stron w siatkę
+  - Scalanie stron w siatkę z pełną kontrolą parametrów
+  - Wykrywanie i usuwanie pustych stron
+  - Odwracanie kolejności stron
+  - Ekstrakcja stron do pojedynczych lub osobnych plików PDF
 
 ### 3. Zaktualizowano PDFEditor.py
 
@@ -112,13 +115,21 @@ Refaktoryzacja przygotowała grunt pod dalsze usprawnienia:
 - Przeniesienie każdego dialogu do osobnego pliku w gui/dialogs/
 - Redukcja PDFEditor.py o ~2000 linii
 
-### Faza 3 - PDF Tools ✅ ZAKOŃCZONA
+### 3. PDF Tools ✅ ZAKOŃCZONA - ROZSZERZONA
 - ✅ Wydzielenie operacji PDF do core/pdf_tools.py
 - ✅ Utworzono klasę PDFTools z pełną funkcjonalnością
-- ✅ Zmigrowano metody: kadrowanie, zmiana rozmiaru, numeracja, obracanie, usuwanie, duplikowanie, zamiana, clipboard, import/eksport
+- ✅ Zmigrowano metody podstawowe: kadrowanie, zmiana rozmiaru, numeracja, obracanie, usuwanie, duplikowanie, zamiana, clipboard, import/eksport
+- ✅ **NOWE:** Zmigrowano zaawansowane metody:
+  - ✅ `merge_pages_into_grid()` - scalanie stron w siatkę z pełną kontrolą nad marginasami, odstępami i DPI renderowania
+  - ✅ `detect_empty_pages()` i `remove_empty_pages()` - wykrywanie i usuwanie pustych stron
+  - ✅ `reverse_pages()` - odwracanie kolejności stron
+  - ✅ `create_pdf_from_image_exact_size()` - tworzenie PDF z obrazu z dokładnym rozmiarem strony
+  - ✅ `extract_pages_to_single_pdf()` i `extract_pages_to_separate_pdfs()` - ekstrakcja stron
+  - ✅ Ulepszona `export_pages_to_images()` - eksport stron do obrazów z unikalną nazwą pliku
 - ✅ Wszystkie operacje PDF delegowane do PDFTools
 - ✅ Zachowano pełną funkcjonalność aplikacji
-- ✅ Redukcja PDFEditor.py o ~400 linii (wrapper methods)
+- ✅ PDFEditor.py zawiera tylko logikę GUI/dialogów i wywołania PDFTools
+- ✅ Redukcja PDFEditor.py o ~500 linii poprzez delegację logiki PDF
 
 ### Faza 4 - Macro Manager ✅ ZAKOŃCZONA
 - ✅ Wydzielenie logiki makr do core/macro_manager.py

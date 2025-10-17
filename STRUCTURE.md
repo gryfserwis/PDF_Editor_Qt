@@ -222,10 +222,16 @@ Klasa narzędziowa do operacji na dokumentach PDF:
   - `import_image_as_page()` - Importuje obraz jako stronę PDF
   - `export_pages_to_pdf()` - Eksportuje strony do nowego PDF
   - `export_pages_to_images()` - Eksportuje strony jako obrazy
-  - `create_pdf_from_image()` - Tworzy PDF z obrazu
+  - `create_pdf_from_image()` - Tworzy PDF z obrazu (z ustawieniami rozmiaru strony)
+  - `create_pdf_from_image_exact_size()` - Tworzy PDF z obrazu (rozmiar strony = rozmiar obrazu)
+  - `extract_pages_to_single_pdf()` - Ekstraktuje strony do jednego pliku PDF
+  - `extract_pages_to_separate_pdfs()` - Ekstraktuje każdą stronę do osobnego pliku PDF
   
   **Metody zaawansowane:**
-  - `merge_pages_into_grid()` - Scala strony w siatkę
+  - `merge_pages_into_grid()` - Scala strony w siatkę z pełną kontrolą nad marginasami, odstępami i DPI
+  - `detect_empty_pages()` - Wykrywa puste strony w dokumencie
+  - `remove_empty_pages()` - Usuwa puste strony z dokumentu
+  - `reverse_pages()` - Odwraca kolejność wszystkich stron w dokumencie
 
 ### PDFEditor.py - Główna Aplikacja
 
