@@ -158,6 +158,48 @@ Zarządzanie preferencjami aplikacji:
   - EnhancedPageRangeDialog - zakresy stron
   - ImageImportSettingsDialog - import obrazów
 
+#### pdf_tools.py
+Klasa narzędziowa do operacji na dokumentach PDF:
+
+- `PDFTools()`
+  - Wszystkie operacje na plikach PDF wydzielone do osobnej klasy
+  - Metody przyjmują dokumenty i parametry, zwracają wyniki
+  - Używają callbacków do raportowania postępu
+  
+  **Metody kadrowania i rozmiaru:**
+  - `crop_pages()` - Kadrowanie stron przez ustawienie cropbox
+  - `mask_crop_pages()` - Kadrowanie przez maskowanie (usuwanie zawartości)
+  - `resize_pages_with_scale()` - Zmiana rozmiaru ze skalowaniem zawartości
+  - `resize_pages_without_scale()` - Zmiana rozmiaru bez skalowania
+  
+  **Metody numeracji:**
+  - `insert_page_numbers()` - Wstawia numerację na stronach
+  - `remove_page_numbers()` - Usuwa numerację z marginesów
+  
+  **Metody manipulacji stronami:**
+  - `rotate_pages()` - Obraca strony o zadany kąt
+  - `delete_pages()` - Usuwa strony z dokumentu
+  - `duplicate_page()` - Duplikuje stronę
+  - `swap_pages()` - Zamienia miejscami dwie strony
+  - `insert_blank_pages()` - Wstawia puste strony
+  
+  **Metody clipboard:**
+  - `get_page_bytes()` - Pobiera bajty wybranych stron
+  - `paste_pages()` - Wkleja strony ze schowka
+  
+  **Metody transformacji:**
+  - `shift_page_content()` - Przesuwa zawartość stron
+  
+  **Metody import/export:**
+  - `import_pdf_pages()` - Importuje strony z innego PDF
+  - `import_image_as_page()` - Importuje obraz jako stronę PDF
+  - `export_pages_to_pdf()` - Eksportuje strony do nowego PDF
+  - `export_pages_to_images()` - Eksportuje strony jako obrazy
+  - `create_pdf_from_image()` - Tworzy PDF z obrazu
+  
+  **Metody zaawansowane:**
+  - `merge_pages_into_grid()` - Scala strony w siatkę
+
 ### PDFEditor.py - Główna Aplikacja
 
 Zawiera wszystkie pozostałe komponenty:
@@ -204,7 +246,7 @@ from utils import (
 )
 
 # Import z core
-from core import PreferencesManager
+from core import PreferencesManager, PDFTools
 ```
 
 ### Przykłady Użycia
@@ -275,6 +317,47 @@ from utils import Tooltip
 Tooltip(przycisk, "To jest podpowiedź dla tego przycisku")
 ```
 
+#### Operacje PDF
+```python
+from core import PDFTools
+import fitz
+
+# Inicjalizacja narzędzi PDF
+pdf_tools = PDFTools()
+
+# Otwórz dokument
+pdf_document = fitz.open("document.pdf")
+
+# Kadruj strony (strony 0-2)
+pdf_bytes = pdf_document.write()
+new_pdf_bytes = pdf_tools.crop_pages(
+    pdf_bytes, {0, 1, 2},
+    top_mm=10, bottom_mm=10, left_mm=15, right_mm=15
+)
+
+# Obrót stron
+rotated_count = pdf_tools.rotate_pages(
+    pdf_document, [0, 1, 2], angle=90
+)
+
+# Numeracja stron
+settings = {
+    'start_num': 1,
+    'mode': 'zwykla',
+    'alignment': 'srodek',
+    'vertical_pos': 'dol',
+    'margin_vertical_mm': 10,
+    'font_size': 11,
+    'font_name': 'helv'
+}
+pdf_tools.insert_page_numbers(
+    pdf_document, [0, 1, 2], settings
+)
+
+# Zamknij dokument
+pdf_document.close()
+```
+
 ## Walidacja Struktury
 
 Projekt zawiera skrypt walidacyjny `validate_structure.py` który sprawdza:
@@ -310,13 +393,19 @@ Przeniesienie każdego dialogu do osobnego pliku:
 - `gui/dialogs/shift_content_dialog.py`
 - etc.
 
-### 2. core/pdf_tools.py - Operacje na PDF
-Wydzielenie operacji PDF do klasy narzędziowej:
-- Kadrowanie stron (`_crop_pages`, `_mask_crop_pages`)
-- Zmiana rozmiaru (`_resize_with_scale`, `_resize_noscale`)
-- Numeracja stron
-- Przesuwanie zawartości
-- Import/Eksport stron
+### 2. core/pdf_tools.py - Operacje na PDF ✅ ZREALIZOWANE
+Wydzielenie operacji PDF do klasy narzędziowej PDFTools:
+- Kadrowanie stron (`crop_pages`, `mask_crop_pages`)
+- Zmiana rozmiaru (`resize_pages_with_scale`, `resize_pages_without_scale`)
+- Numeracja stron (`insert_page_numbers`, `remove_page_numbers`)
+- Obracanie stron (`rotate_pages`)
+- Usuwanie stron (`delete_pages`)
+- Duplikowanie i zamiana stron (`duplicate_page`, `swap_pages`)
+- Operacje clipboard (`get_page_bytes`, `paste_pages`)
+- Wstawianie pustych stron (`insert_blank_pages`)
+- Przesuwanie zawartości (`shift_page_content`)
+- Import/Eksport (`import_pdf_pages`, `import_image_as_page`, `export_pages_to_pdf`, `export_pages_to_images`, `create_pdf_from_image`)
+- Scalanie stron w siatkę (`merge_pages_into_grid`)
 
 ### 3. core/macro_manager.py - System makr
 Zarządzanie makrami w dedykowanej klasie:
