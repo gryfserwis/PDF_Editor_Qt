@@ -27,7 +27,7 @@ from utils import (
     mm2pt, validate_float_range, generate_unique_export_filename, resource_path,
     custom_messagebox, Tooltip
 )
-from core import PreferencesManager, PDFTools
+from core import PreferencesManager, PDFTools, MacroManager
 
 # === DIALOGS AND UI COMPONENTS ===
 # PreferencesManager has been moved to core/preferences_manager.py
@@ -2372,8 +2372,7 @@ class MacroRecordingDialog(tk.Toplevel):
             return
         
         # Check if macro with this name already exists
-        macros = self.viewer.prefs_manager.get_profiles('macros')
-        if name in macros:
+        if self.viewer.macro_manager.macro_exists(name):
             custom_messagebox(self, "Błąd", f"Makro o nazwie '{name}' już istnieje. Wybierz inną nazwę.", typ="error")
             return
         
@@ -2386,39 +2385,32 @@ class MacroRecordingDialog(tk.Toplevel):
         self.stop_button.config(state=tk.NORMAL)
         self.status_label.config(text=f"Nagrywanie makra '{name}' w toku...", foreground="red")
         
-        # Start recording in viewer
-        self.viewer.macro_recording = True
-        self.viewer.current_macro_actions = []
-        self.viewer.macro_recording_name = name
+        # Start recording in MacroManager
+        self.viewer.macro_manager.start_recording(name)
         self.viewer._update_status(f"Nagrywanie makra '{name}'...")
     
     def on_stop(self):
         """Stop recording and save macro"""
-        if not self.viewer.current_macro_actions:
+        actions_count = self.viewer.macro_manager.get_actions_count()
+        if actions_count == 0:
             custom_messagebox(self, "Informacja", "Makro nie zawiera żadnych akcji.", typ="info")
             self.on_cancel()
             return
         
+        # Stop recording and get recorded actions
+        macro_name, actions = self.viewer.macro_manager.stop_recording()
+        
         # Save macro
-        macros = self.viewer.prefs_manager.get_profiles('macros')
-        macros[self.macro_name] = {
-            'actions': self.viewer.current_macro_actions,
-            'shortcut': ''
-        }
-        self.viewer.prefs_manager.save_profiles('macros', macros)
+        self.viewer.macro_manager.save_macro(macro_name, actions)
         
         custom_messagebox(
             self,
             "Sukces",
-            f"Makro '{self.macro_name}' zostało zapisane z {len(self.viewer.current_macro_actions)} akcjami.",
+            f"Makro '{macro_name}' zostało zapisane z {actions_count} akcjami.",
             typ="info"
         )
         
-        # Stop recording
-        self.viewer.macro_recording = False
-        self.viewer.macro_recording_name = None
-        self.viewer.current_macro_actions = []
-        self.viewer._update_status(f"Makro '{self.macro_name}' zapisane.")
+        self.viewer._update_status(f"Makro '{macro_name}' zapisane.")
         self.viewer.refresh_macros_menu()
         
         # Call refresh callback if provided
@@ -2430,9 +2422,7 @@ class MacroRecordingDialog(tk.Toplevel):
     def on_cancel(self):
         """Cancel recording"""
         if self.recording:
-            self.viewer.macro_recording = False
-            self.viewer.macro_recording_name = None
-            self.viewer.current_macro_actions = []
+            self.viewer.macro_manager.cancel_recording()
             self.viewer._update_status("Nagrywanie makra anulowane.")
         self.destroy()
 
@@ -4317,7 +4307,7 @@ class SelectablePDFViewer:
         """Odświeża menu główne Makra – dynamicznie dodaje wszystkie makra użytkownika."""
         self.macros_menu.delete(0, "end")  # Wyczyść stare wpisy
         self.macros_menu.add_command(label="Lista makr użytkownika...", command=self.show_macros_list,accelerator="F12")
-        macros = self.prefs_manager.get_profiles('macros')
+        macros = self.macro_manager.get_all_macros()
         if macros:  # separator tylko jeśli jest przynajmniej jedno makro
             self.macros_menu.add_separator()
             for macro_name in macros:
@@ -4766,7 +4756,7 @@ class SelectablePDFViewer:
         self.update_focus_display(hide_mouse_focus=True)
 
         # --- Dodaj to poniżej! ---
-        if getattr(self, "macro_recording", False):
+        if self.macro_manager.is_recording():
             indices = sorted(self.selected_pages)
             page_count = len(self.pdf_document) if self.pdf_document else 0
             self._record_action('select_custom', indices=indices, source_page_count=page_count)
@@ -6908,9 +6898,7 @@ class SelectablePDFViewer:
     
     def _init_macro_system(self):
         """Inicjalizuje system makr"""
-        self.macro_recording = False
-        self.current_macro_actions = []
-        self.macro_recording_name = None
+        self.macro_manager = MacroManager(self.prefs_manager)
         self.macros_list_dialog = None  # Track the MacrosListDialog instance
         self.pdf_analysis_dialog = None  # Track the PDFAnalysisDialog instance
     
@@ -6921,11 +6909,7 @@ class SelectablePDFViewer:
     
     def _record_action(self, action_name, **kwargs):
         """Nagrywa akcję do bieżącego makra"""
-        if self.macro_recording:
-            self.current_macro_actions.append({
-                'action': action_name,
-                'params': kwargs
-            })
+        self.macro_manager.record_action(action_name, **kwargs)
     
     def show_macros_list(self):
         """Wyświetla listę makr użytkownika"""
@@ -6949,12 +6933,11 @@ class SelectablePDFViewer:
     
     def run_macro(self, macro_name):
         """Uruchamia makro o podanej nazwie"""
-        macros = self.prefs_manager.get_profiles('macros')
-        if macro_name not in macros:
+        macro = self.macro_manager.get_macro(macro_name)
+        if not macro:
             custom_messagebox(self.master, "Błąd", f"Makro '{macro_name}' nie istnieje.", typ="error")
             return
         
-        macro = macros[macro_name]
         actions = macro.get('actions', [])
         
         if not actions:
@@ -6962,8 +6945,9 @@ class SelectablePDFViewer:
             return
         
         # Wyłącz nagrywanie podczas wykonywania makra
-        was_recording = self.macro_recording
-        self.macro_recording = False
+        was_recording = self.macro_manager.is_recording()
+        if was_recording:
+            self.macro_manager.recording = False
         
         try:
             for action_data in actions:
@@ -7005,7 +6989,8 @@ class SelectablePDFViewer:
         except Exception as e:
             custom_messagebox(self.master, "Błąd", f"Błąd podczas wykonywania makra:\n{e}", typ="error")
         finally:
-            self.macro_recording = was_recording
+            if was_recording:
+                self.macro_manager.recording = True
     
     def _replay_shift_page_content(self, params):
         """Replay shift_page_content with saved parameters (zgodnie z aktualną wersją GUI)"""
