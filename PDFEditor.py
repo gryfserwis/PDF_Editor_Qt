@@ -27,7 +27,7 @@ from utils import (
     mm2pt, validate_float_range, generate_unique_export_filename, resource_path,
     custom_messagebox, Tooltip
 )
-from core import PreferencesManager
+from core import PreferencesManager, PDFTools
 
 # === DIALOGS AND UI COMPONENTS ===
 # PreferencesManager has been moved to core/preferences_manager.py
@@ -3256,169 +3256,68 @@ class SelectablePDFViewer:
         self._update_status(f"Można przeciągać tylko pliki PDF lub obrazy! Otrzymano: {filepath}")
 
     def _crop_pages(self, pdf_bytes, selected_indices, top_mm, bottom_mm, left_mm, right_mm, reposition=False, pos_mode="center", offset_x_mm=0, offset_y_mm=0):
-        reader = PdfReader(io.BytesIO(pdf_bytes))
-        writer = PdfWriter()
-        total_pages = len(reader.pages)
+        """Wrapper dla PDFTools.crop_pages z integracją GUI."""
+        def progress_callback(current, total):
+            if current == 0:
+                self.show_progressbar(maximum=total)
+            self.update_progressbar(current)
+            if current == total:
+                self.hide_progressbar()
         
-        # Update status first to ensure it's visible immediately
-        self._update_status("Kadrowanie stron...")
-        self.show_progressbar(maximum=total_pages)
-        
-        for i, page in enumerate(reader.pages):
-            if i not in selected_indices:
-                writer.add_page(page)
-                self.update_progressbar(i + 1)
-                continue
-            orig_mediabox = RectangleObject([float(v) for v in page.mediabox])
-            x0, y0, x1, y1 = [float(v) for v in orig_mediabox]
-            new_x0 = x0 + mm2pt(left_mm)
-            new_y0 = y0 + mm2pt(bottom_mm)
-            new_x1 = x1 - mm2pt(right_mm)
-            new_y1 = y1 - mm2pt(top_mm)
-            if new_x0 >= new_x1 or new_y0 >= new_y1:
-                writer.add_page(page)
-                self.update_progressbar(i + 1)
-                continue
-            new_rect = RectangleObject([new_x0, new_y0, new_x1, new_y1])
-
-            # Ustaw tylko cropbox, trimbox, artbox - mediabox zostaje oryginalny!
-            page.cropbox = new_rect
-            page.trimbox = new_rect
-            page.artbox = new_rect
-            # Przywracamy mediabox (nie zmieniamy!)
-            page.mediabox = orig_mediabox
-
-            # opcjonalnie: przesuwanie zawartości strony (zostawiam bez zmian)
-            if reposition:
-                dx = mm2pt(offset_x_mm) if pos_mode == "custom" else 0
-                dy = mm2pt(offset_y_mm) if pos_mode == "custom" else 0
-                if dx != 0 or dy != 0:
-                    transform = Transformation().translate(tx=dx, ty=dy)
-                    page.add_transformation(transform)
-
-            writer.add_page(page)
-            self.update_progressbar(i + 1)
-        
-        self.hide_progressbar()
-        out = io.BytesIO()
-        writer.write(out)
-        out.seek(0)
-        return out.read()
+        return self.pdf_tools.crop_pages(
+            pdf_bytes, selected_indices, top_mm, bottom_mm, left_mm, right_mm,
+            reposition, pos_mode, offset_x_mm, offset_y_mm,
+            progress_callback=self._update_status,
+            progressbar_callback=progress_callback
+        )
         
     import fitz  # PyMuPDF
 
     def _mask_crop_pages(self, pdf_bytes, selected_indices, top_mm, bottom_mm, left_mm, right_mm):
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        MM_TO_PT = 72 / 25.4
+        """Wrapper dla PDFTools.mask_crop_pages z integracją GUI."""
+        def progress_callback(current, total):
+            if current == 0:
+                self.show_progressbar(maximum=total)
+            self.update_progressbar(current)
+            if current == total:
+                self.hide_progressbar()
         
-        # Update status first to ensure it's visible immediately
-        self._update_status("Maskowanie marginesów...")
-        self.show_progressbar(maximum=len(selected_indices))
-        
-        for idx_progress, i in enumerate(selected_indices):
-            page = doc[i]
-            rect = page.rect
-
-            # Wylicz marginesy w punktach
-            left_pt   = left_mm * MM_TO_PT
-            right_pt  = right_mm * MM_TO_PT
-            top_pt    = top_mm * MM_TO_PT
-            bottom_pt = bottom_mm * MM_TO_PT
-
-            # Lewy margines
-            if left_pt > 0:
-                mask_rect = fitz.Rect(rect.x0, rect.y0, rect.x0 + left_pt, rect.y1)
-                page.draw_rect(mask_rect, color=(1,1,1), fill=(1,1,1), overlay=True)
-            # Prawy margines
-            if right_pt > 0:
-                mask_rect = fitz.Rect(rect.x1 - right_pt, rect.y0, rect.x1, rect.y1)
-                page.draw_rect(mask_rect, color=(1,1,1), fill=(1,1,1), overlay=True)
-            # Górny margines
-            if top_pt > 0:
-                mask_rect = fitz.Rect(rect.x0, rect.y1 - top_pt, rect.x1, rect.y1)
-                page.draw_rect(mask_rect, color=(1,1,1), fill=(1,1,1), overlay=True)
-            # Dolny margines
-            if bottom_pt > 0:
-                mask_rect = fitz.Rect(rect.x0, rect.y0, rect.x1, rect.y0 + bottom_pt)
-                page.draw_rect(mask_rect, color=(1,1,1), fill=(1,1,1), overlay=True)
-            
-            self.update_progressbar(idx_progress + 1)
-
-        self.hide_progressbar()
-        output_bytes = doc.write()
-        doc.close()
-        return output_bytes
+        return self.pdf_tools.mask_crop_pages(
+            pdf_bytes, selected_indices, top_mm, bottom_mm, left_mm, right_mm,
+            progress_callback=self._update_status,
+            progressbar_callback=progress_callback
+        )
 
     def _resize_scale(self, pdf_bytes, selected_indices, width_mm, height_mm):
-        reader = PdfReader(io.BytesIO(pdf_bytes))
-        writer = PdfWriter()
-        target_width = mm2pt(width_mm)
-        target_height = mm2pt(height_mm)
-        total_pages = len(reader.pages)
+        """Wrapper dla PDFTools.resize_pages_with_scale z integracją GUI."""
+        def progress_callback(current, total):
+            if current == 0:
+                self.show_progressbar(maximum=total)
+            self.update_progressbar(current)
+            if current == total:
+                self.hide_progressbar()
         
-        # Update status first to ensure it's visible immediately
-        self._update_status("Zmiana rozmiaru stron ze skalowaniem...")
-        self.show_progressbar(maximum=total_pages)
-        
-        for i, page in enumerate(reader.pages):
-            if i not in selected_indices:
-                writer.add_page(page)
-                self.update_progressbar(i + 1)
-                continue
-            orig_w = float(page.mediabox.width)
-            orig_h = float(page.mediabox.height)
-            scale = min(target_width / orig_w, target_height / orig_h)
-            dx = (target_width - orig_w * scale) / 2
-            dy = (target_height - orig_h * scale) / 2
-            transform = Transformation().scale(sx=scale, sy=scale).translate(tx=dx, ty=dy)
-            page.add_transformation(transform)
-            page.mediabox = RectangleObject([0, 0, target_width, target_height])
-            page.cropbox = RectangleObject([0, 0, target_width, target_height])
-            writer.add_page(page)
-            self.update_progressbar(i + 1)
-        
-        self.hide_progressbar()
-        out = io.BytesIO()
-        writer.write(out)
-        out.seek(0)
-        return out.read()
+        return self.pdf_tools.resize_pages_with_scale(
+            pdf_bytes, selected_indices, width_mm, height_mm,
+            progress_callback=self._update_status,
+            progressbar_callback=progress_callback
+        )
 
     def _resize_noscale(self, pdf_bytes, selected_indices, width_mm, height_mm, pos_mode="center", offset_x_mm=0, offset_y_mm=0):
-        reader = PdfReader(io.BytesIO(pdf_bytes))
-        writer = PdfWriter()
-        target_width = mm2pt(width_mm)
-        target_height = mm2pt(height_mm)
-        total_pages = len(reader.pages)
+        """Wrapper dla PDFTools.resize_pages_without_scale z integracją GUI."""
+        def progress_callback(current, total):
+            if current == 0:
+                self.show_progressbar(maximum=total)
+            self.update_progressbar(current)
+            if current == total:
+                self.hide_progressbar()
         
-        # Update status first to ensure it's visible immediately
-        self._update_status("Zmiana rozmiaru stron bez skalowania...")
-        self.show_progressbar(maximum=total_pages)
-        
-        for i, page in enumerate(reader.pages):
-            if i not in selected_indices:
-                writer.add_page(page)
-                self.update_progressbar(i + 1)
-                continue
-            orig_w = float(page.mediabox.width)
-            orig_h = float(page.mediabox.height)
-            if pos_mode == "center":
-                dx = (target_width - orig_w) / 2
-                dy = (target_height - orig_h) / 2
-            else:
-                dx = mm2pt(offset_x_mm)
-                dy = mm2pt(offset_y_mm)
-            transform = Transformation().translate(tx=dx, ty=dy)
-            page.add_transformation(transform)
-            page.mediabox = RectangleObject([0, 0, target_width, target_height])
-            page.cropbox = RectangleObject([0, 0, target_width, target_height])
-            writer.add_page(page)
-            self.update_progressbar(i + 1)
-        
-        self.hide_progressbar()
-        out = io.BytesIO()
-        writer.write(out)
-        out.seek(0)
-        return out.read()
+        return self.pdf_tools.resize_pages_without_scale(
+            pdf_bytes, selected_indices, width_mm, height_mm,
+            pos_mode, offset_x_mm, offset_y_mm,
+            progress_callback=self._update_status,
+            progressbar_callback=progress_callback
+        )
 
     def apply_page_crop_resize_dialog(self):
         """
@@ -4243,6 +4142,9 @@ class SelectablePDFViewer:
 
         # Inicjalizacja managera preferencji
         self.prefs_manager = PreferencesManager()
+        
+        # Inicjalizacja narzędzi PDF
+        self.pdf_tools = PDFTools()
         
         # Inicjalizacja systemu makr
         self._init_macro_system()
