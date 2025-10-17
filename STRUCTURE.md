@@ -20,13 +20,15 @@ Projekt został zrefaktoryzowany w celu poprawy organizacji kodu i ułatwienia u
    - Widget Tooltip
    - Niestandardowe okna dialogowe
 
-2. **Core Package** (154 linii)
+2. **Core Package** (154 + 1240 + 648 = 2042 linii)
    - PreferencesManager - zarządzanie preferencjami
+   - PDFTools - narzędzia do operacji na PDF
+   - MacroManager - system makr
 
-3. **Main Application** (7619 linii)
-   - Wszystkie klasy dialogów
+3. **Main Application** (6843 linii)
+   - Klasy dialogów interfejsu użytkownika
    - Główna klasa SelectablePDFViewer
-   - Logika operacji PDF
+   - Integracja komponentów aplikacji
 
 ## Struktura Katalogów
 
@@ -35,7 +37,9 @@ PDF_Editor_Qt/
 ├── PDFEditor.py           # Główny plik aplikacji
 ├── core/                  # Moduły podstawowe
 │   ├── __init__.py
-│   └── preferences_manager.py  # Zarządzanie preferencjami
+│   ├── preferences_manager.py  # Zarządzanie preferencjami
+│   ├── pdf_tools.py           # Narzędzia PDF
+│   └── macro_manager.py       # System makr
 ├── utils/                 # Funkcje pomocnicze i narzędzia
 │   ├── __init__.py
 │   ├── constants.py       # Stałe aplikacji
@@ -200,6 +204,35 @@ Klasa narzędziowa do operacji na dokumentach PDF:
   **Metody zaawansowane:**
   - `merge_pages_into_grid()` - Scala strony w siatkę
 
+#### macro_manager.py
+Klasa zarządzająca systemem makr:
+
+- `MacroManager(viewer, prefs_manager, master)`
+  - Zarządza nagrywaniem, zapisywaniem i wykonywaniem makr
+  - Integruje dialogi makr z główną aplikacją
+  - Zapewnia niezależny system makr odseparowany od głównej logiki
+  
+  **Metody publiczne:**
+  - `record_action(action_name: str, **kwargs)` - Nagrywa akcję do bieżącego makra
+  - `start_recording(macro_name: str)` - Rozpoczyna nagrywanie makra
+  - `stop_recording()` - Zatrzymuje nagrywanie makra
+  - `cancel_recording()` - Anuluje nagrywanie makra
+  - `open_recording_dialog()` - Otwiera dialog nagrywania
+  - `show_macros_list()` - Wyświetla listę makr
+  - `run_macro(macro_name: str)` - Wykonuje makro
+  
+  **Klasy dialogów makr:**
+  - `MacroEditDialog` - Edycja makr w formacie JSON
+  - `MacroRecordingDialog` - Nagrywanie nowych makr
+  - `MacrosListDialog` - Przeglądanie i zarządzanie makrami
+  
+  **Obsługiwane akcje makr:**
+  - Zaznaczanie stron (wszystkie, nieparzyste, parzyste, pionowe, poziome, niestandardowe)
+  - Obracanie stron (w lewo, w prawo)
+  - Przesuwanie zawartości strony
+  - Wstawianie i usuwanie numeracji stron
+  - Kadrowanie i zmiana rozmiaru stron
+
 ### PDFEditor.py - Główna Aplikacja
 
 Zawiera wszystkie pozostałe komponenty:
@@ -214,9 +247,6 @@ Zawiera wszystkie pozostałe komponenty:
 - EnhancedPageRangeDialog - Wybór zakresów stron
 - ThumbnailFrame - Ramka miniatury strony
 - MergePageGridDialog - Scalanie stron w siatkę
-- MacroEditDialog - Edycja makr
-- MacroRecordingDialog - Nagrywanie makr
-- MacrosListDialog - Lista makr
 - MergePDFDialog - Scalanie plików PDF
 - PDFAnalysisDialog - Analiza dokumentu PDF
 
@@ -226,7 +256,7 @@ Zawiera wszystkie pozostałe komponenty:
   - Obsługa miniatur i selekcji stron
   - Operacje na stronach (obracanie, usuwanie, kopiowanie, etc.)
   - System cofania/ponawiania
-  - System makr
+  - Integracja systemu makr przez MacroManager
   - Import/Eksport PDF i obrazów
   - Drag & Drop
   - Menu i skróty klawiszowe

@@ -27,7 +27,7 @@ PDF_Editor_Qt/
 - **messagebox.py** - Niestandardowe okna dialogowe (custom_messagebox)
 - **tooltip.py** - Widget tooltipów (Tooltip)
 
-#### core/ (154 + 1240 linii = 1394 linii)
+#### core/ (154 + 1240 + 648 = 2042 linii)
 - **preferences_manager.py** - Zarządzanie preferencjami (PreferencesManager) - 154 linii
 - **pdf_tools.py** - Wszystkie operacje na PDF (PDFTools) - 1240 linii
   - Kadrowanie i zmiana rozmiaru stron
@@ -38,15 +38,22 @@ PDF_Editor_Qt/
   - Wstawianie pustych stron
   - Przesuwanie zawartości stron
   - Scalanie stron w siatkę
+- **macro_manager.py** - System makr (MacroManager) - 648 linii
+  - Nagrywanie, zapisywanie i wykonywanie makr
+  - Dialogi makr: MacroEditDialog, MacroRecordingDialog, MacrosListDialog
+  - Integracja z główną aplikacją
+  - Obsługa wszystkich typów akcji makr
 
 ### 3. Zaktualizowano PDFEditor.py
 
-- Dodano importy z nowych modułów (PDFTools)
-- Utworzono instancję PDFTools w __init__
+- Dodano importy z nowych modułów (PDFTools, MacroManager)
+- Utworzono instancję PDFTools i MacroManager w __init__
 - Zrefaktoryzowano wszystkie metody PDF do używania PDFTools
+- Zrefaktoryzowano system makr do używania MacroManager
 - Usunięto bezpośrednie operacje na PDF (~800 linii)
+- Usunięto dialogi i logikę makr (~549 linii)
 - Zachowano pełną funkcjonalność - wszystkie metody działają identycznie
-- Zmniejszono rozmiar głównego pliku z 8009 do ~7200 linii (-10%)
+- Zmniejszono rozmiar głównego pliku z 7392 do 6843 linii (-7.4%)
 
 ### 4. Dokumentacja
 
@@ -65,13 +72,17 @@ PDF_Editor_Qt/
 
 | Metryka | Wartość |
 |---------|---------|
-| Usunięte/zrefaktoryzowane linie z PDFEditor.py | ~800 |
-| Utworzone pliki modułowe | 8 (dodano pdf_tools.py) |
+| Usunięte/zrefaktoryzowane linie z PDFEditor.py (PDFTools) | ~800 |
+| Usunięte/zrefaktoryzowane linie z PDFEditor.py (MacroManager) | ~549 |
+| Utworzone pliki modułowe | 9 (pdf_tools.py, macro_manager.py) |
 | Utworzone pakiety | 3 (utils, core, gui) |
-| Całkowita redukcja głównego pliku | ~10% |
+| Całkowita redukcja głównego pliku | ~7.4% (7392 → 6843) |
 | Nowe linie w core/pdf_tools.py | 1240 |
-| Nowe linie dokumentacji | 500+ |
+| Nowe linie w core/macro_manager.py | 648 |
+| Nowe linie dokumentacji | 600+ |
 | Metody zmigrowane do PDFTools | 20+ |
+| Dialogi zmigrowane do MacroManager | 3 |
+| Metody zmigrowane do MacroManager | 7+ |
 
 ## Zachowana funkcjonalność
 
@@ -120,9 +131,15 @@ Refaktoryzacja przygotowała grunt pod dalsze usprawnienia:
 - ✅ Zachowano pełną funkcjonalność aplikacji
 - ✅ Redukcja PDFEditor.py o ~400 linii (wrapper methods)
 
-### Faza 4 - Macro Manager
-- Przeniesienie systemu makr do core/macro_manager.py
-- Redukcja PDFEditor.py o ~500 linii
+### Faza 4 - Macro Manager ✅ ZAKOŃCZONA
+- ✅ Wydzielenie systemu makr do core/macro_manager.py
+- ✅ Utworzono klasę MacroManager z pełną funkcjonalnością
+- ✅ Przeniesiono dialogi: MacroEditDialog, MacroRecordingDialog, MacrosListDialog
+- ✅ Przeniesiono metody: record_action, start/stop/cancel recording, run_macro
+- ✅ Wszystkie operacje makr delegowane do MacroManager
+- ✅ Zachowano pełną funkcjonalność systemu makr
+- ✅ Redukcja PDFEditor.py o ~549 linii
+- ✅ Utworzono 648 linii w core/macro_manager.py
 
 ### Faza 5 - Main Window
 - Wydzielenie logiki głównego okna do gui/main_window.py
