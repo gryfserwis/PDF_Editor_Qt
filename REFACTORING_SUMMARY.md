@@ -120,9 +120,16 @@ Refaktoryzacja przygotowała grunt pod dalsze usprawnienia:
 - ✅ Zachowano pełną funkcjonalność aplikacji
 - ✅ Redukcja PDFEditor.py o ~400 linii (wrapper methods)
 
-### Faza 4 - Macro Manager
-- Przeniesienie systemu makr do core/macro_manager.py
-- Redukcja PDFEditor.py o ~500 linii
+### Faza 4 - Macro Manager ✅ ZAKOŃCZONA
+- ✅ Wydzielenie logiki makr do core/macro_manager.py
+- ✅ Utworzono klasę MacroManager dla zarządzania makrami
+- ✅ Dialogi makr (MacroEditDialog, MacroRecordingDialog, MacrosListDialog) pozostają w PDFEditor.py
+- ✅ Dialogi używają MacroManager przez instancję przekazywaną z SelectablePDFViewer
+- ✅ Usunięto bezpośrednie atrybuty makr (macro_recording, current_macro_actions, macro_recording_name)
+- ✅ Zastąpiono wywołania instancją macro_manager
+- ✅ Zachowano pełną funkcjonalność GUI i systemu makr
+- ✅ Brak kodu tkinter w core/macro_manager.py
+- ✅ Redukcja PDFEditor.py poprzez delegację logiki do MacroManager
 
 ### Faza 5 - Main Window
 - Wydzielenie logiki głównego okna do gui/main_window.py

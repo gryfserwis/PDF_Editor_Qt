@@ -158,6 +158,33 @@ Zarządzanie preferencjami aplikacji:
   - EnhancedPageRangeDialog - zakresy stron
   - ImageImportSettingsDialog - import obrazów
 
+#### macro_manager.py
+Zarządzanie logiką systemu makr:
+
+- `MacroManager(prefs_manager)`
+  - Klasa odpowiedzialna za logikę nagrywania, przechowywania i wykonywania makr
+  - Nie zawiera żadnego kodu GUI/tkinter
+  - Współpracuje z dialogami przez przekazywanie instancji
+  
+  **Metody nagrywania:**
+  - `start_recording(macro_name: str)` - Rozpoczyna nagrywanie makra
+  - `stop_recording()` - Zatrzymuje nagrywanie i zwraca (nazwa, akcje)
+  - `cancel_recording()` - Anuluje nagrywanie bez zapisywania
+  - `record_action(action_name: str, **params)` - Nagrywa akcję do bieżącego makra
+  - `is_recording()` - Sprawdza czy trwa nagrywanie
+  - `get_recording_name()` - Pobiera nazwę nagrawanego makra
+  - `get_current_actions()` - Pobiera listę nagranych akcji
+  - `get_actions_count()` - Zwraca liczbę nagranych akcji
+  
+  **Metody zarządzania makrami:**
+  - `save_macro(macro_name, actions, shortcut='')` - Zapisuje makro
+  - `get_macro(macro_name)` - Pobiera makro po nazwie
+  - `get_all_macros()` - Pobiera wszystkie makra
+  - `delete_macro(macro_name)` - Usuwa makro
+  - `update_macro(macro_name, actions=None, shortcut=None)` - Aktualizuje makro
+  - `duplicate_macro(source_name, target_name)` - Duplikuje makro
+  - `macro_exists(macro_name)` - Sprawdza czy makro istnieje
+
 #### pdf_tools.py
 Klasa narzędziowa do operacji na dokumentach PDF:
 
@@ -214,9 +241,9 @@ Zawiera wszystkie pozostałe komponenty:
 - EnhancedPageRangeDialog - Wybór zakresów stron
 - ThumbnailFrame - Ramka miniatury strony
 - MergePageGridDialog - Scalanie stron w siatkę
-- MacroEditDialog - Edycja makr
-- MacroRecordingDialog - Nagrywanie makr
-- MacrosListDialog - Lista makr
+- MacroEditDialog - Edycja makr (GUI, używa MacroManager)
+- MacroRecordingDialog - Nagrywanie makr (GUI, używa MacroManager)
+- MacrosListDialog - Lista makr (GUI, używa MacroManager)
 - MergePDFDialog - Scalanie plików PDF
 - PDFAnalysisDialog - Analiza dokumentu PDF
 
@@ -226,7 +253,7 @@ Zawiera wszystkie pozostałe komponenty:
   - Obsługa miniatur i selekcji stron
   - Operacje na stronach (obracanie, usuwanie, kopiowanie, etc.)
   - System cofania/ponawiania
-  - System makr
+  - Współpraca z MacroManager do obsługi makr
   - Import/Eksport PDF i obrazów
   - Drag & Drop
   - Menu i skróty klawiszowe
@@ -407,12 +434,14 @@ Wydzielenie operacji PDF do klasy narzędziowej PDFTools:
 - Import/Eksport (`import_pdf_pages`, `import_image_as_page`, `export_pages_to_pdf`, `export_pages_to_images`, `create_pdf_from_image`)
 - Scalanie stron w siatkę (`merge_pages_into_grid`)
 
-### 3. core/macro_manager.py - System makr
-Zarządzanie makrami w dedykowanej klasie:
-- Nagrywanie makr
-- Odtwarzanie makr
-- Zarządzanie listą makr
-- Serializacja/deserializacja
+### 3. core/macro_manager.py - System makr ✅ ZREALIZOWANE
+Zarządzanie makrami w dedykowanej klasie MacroManager:
+- ✅ Nagrywanie makr (start_recording, stop_recording, record_action)
+- ✅ Pobieranie danych makr (get_macro, get_all_macros)
+- ✅ Zarządzanie listą makr (save_macro, delete_macro, update_macro, duplicate_macro)
+- ✅ Sprawdzanie stanu (is_recording, macro_exists)
+- ✅ Dialogi makr (MacroEditDialog, MacroRecordingDialog, MacrosListDialog) pozostają w PDFEditor.py
+- ✅ Brak kodu GUI/tkinter w MacroManager
 
 ### 4. gui/main_window.py - Główne okno
 Wydzielenie logiki głównego okna:
