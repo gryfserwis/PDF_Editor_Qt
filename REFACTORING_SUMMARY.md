@@ -27,26 +27,30 @@ PDF_Editor_Qt/
 - **messagebox.py** - Niestandardowe okna dialogowe (custom_messagebox)
 - **tooltip.py** - Widget tooltipów (Tooltip)
 
-#### core/ (154 + 1240 linii = 1394 linii)
+#### core/ (154 + 1370 linii = 1524 linii)
 - **preferences_manager.py** - Zarządzanie preferencjami (PreferencesManager) - 154 linii
-- **pdf_tools.py** - Wszystkie operacje na PDF (PDFTools) - 1240 linii
+- **pdf_tools.py** - Wszystkie operacje na PDF (PDFTools) - 1370 linii
   - Kadrowanie i zmiana rozmiaru stron
-  - Numeracja stron (wstawianie i usuwanie)
+  - Numeracja stron (wstawianie i usuwanie, w tym zaawansowane usuwanie przez wzorce)
   - Obracanie, usuwanie, duplikowanie, zamiana stron
   - Operacje clipboard (kopiowanie, wycinanie, wklejanie)
   - Import i eksport PDF oraz obrazów
   - Wstawianie pustych stron
   - Przesuwanie zawartości stron
-  - Scalanie stron w siatkę
+  - Scalanie stron w siatkę z pełną kontrolą parametrów
+  - Wykrywanie i usuwanie pustych stron
+  - Odwracanie kolejności stron
+  - Ekstrakcja stron do pojedynczych lub osobnych plików PDF
 
 ### 3. Zaktualizowano PDFEditor.py
 
 - Dodano importy z nowych modułów (PDFTools)
 - Utworzono instancję PDFTools w __init__
 - Zrefaktoryzowano wszystkie metody PDF do używania PDFTools
-- Usunięto bezpośrednie operacje na PDF (~800 linii)
+- Usunięto bezpośrednie operacje na PDF (~900 linii)
 - Zachowano pełną funkcjonalność - wszystkie metody działają identycznie
-- Zmniejszono rozmiar głównego pliku z 8009 do ~7200 linii (-10%)
+- Zmniejszono rozmiar głównego pliku z 8009 do ~7250 linii (-10%)
+- Niektóre metody (shift_page_content, import_pdf_after_active_page, import_image_to_new_page) używają atomowych wywołań fitz/pypdf dla specyficznych przypadków UI
 
 ### 4. Dokumentacja
 
@@ -65,13 +69,13 @@ PDF_Editor_Qt/
 
 | Metryka | Wartość |
 |---------|---------|
-| Usunięte/zrefaktoryzowane linie z PDFEditor.py | ~800 |
+| Usunięte/zrefaktoryzowane linie z PDFEditor.py | ~900 |
 | Utworzone pliki modułowe | 8 (dodano pdf_tools.py) |
 | Utworzone pakiety | 3 (utils, core, gui) |
-| Całkowita redukcja głównego pliku | ~10% |
-| Nowe linie w core/pdf_tools.py | 1240 |
+| Redukcja głównego pliku | ~550 linii (-7.5%) |
+| Nowe linie w core/pdf_tools.py | 1370 |
 | Nowe linie dokumentacji | 500+ |
-| Metody zmigrowane do PDFTools | 20+ |
+| Metody zmigrowane do PDFTools | 30+ |
 
 ## Zachowana funkcjonalność
 
@@ -112,13 +116,22 @@ Refaktoryzacja przygotowała grunt pod dalsze usprawnienia:
 - Przeniesienie każdego dialogu do osobnego pliku w gui/dialogs/
 - Redukcja PDFEditor.py o ~2000 linii
 
-### Faza 3 - PDF Tools ✅ ZAKOŃCZONA
+### 3. PDF Tools ✅ ZAKOŃCZONA - ROZSZERZONA
 - ✅ Wydzielenie operacji PDF do core/pdf_tools.py
 - ✅ Utworzono klasę PDFTools z pełną funkcjonalnością
-- ✅ Zmigrowano metody: kadrowanie, zmiana rozmiaru, numeracja, obracanie, usuwanie, duplikowanie, zamiana, clipboard, import/eksport
+- ✅ Zmigrowano metody podstawowe: kadrowanie, zmiana rozmiaru, numeracja, obracanie, usuwanie, duplikowanie, zamiana, clipboard, import/eksport
+- ✅ **NOWE:** Zmigrowano zaawansowane metody:
+  - ✅ `merge_pages_into_grid()` - scalanie stron w siatkę z pełną kontrolą nad marginasami, odstępami i DPI renderowania
+  - ✅ `detect_empty_pages()` i `remove_empty_pages()` - wykrywanie i usuwanie pustych stron
+  - ✅ `reverse_pages()` - odwracanie kolejności stron
+  - ✅ `create_pdf_from_image_exact_size()` - tworzenie PDF z obrazu z dokładnym rozmiarem strony
+  - ✅ `extract_pages_to_single_pdf()` i `extract_pages_to_separate_pdfs()` - ekstrakcja stron
+  - ✅ `remove_page_numbers_by_pattern()` - zaawansowane usuwanie numeracji przez wykrywanie wzorców
+  - ✅ Ulepszona `export_pages_to_images()` - eksport stron do obrazów z unikalną nazwą pliku
 - ✅ Wszystkie operacje PDF delegowane do PDFTools
 - ✅ Zachowano pełną funkcjonalność aplikacji
-- ✅ Redukcja PDFEditor.py o ~400 linii (wrapper methods)
+- ✅ PDFEditor.py zawiera tylko logikę GUI/dialogów i wywołania PDFTools
+- ✅ Redukcja PDFEditor.py o ~550 linii poprzez delegację logiki PDF (7377 → 7253)
 
 ### Faza 4 - Macro Manager ✅ ZAKOŃCZONA
 - ✅ Wydzielenie logiki makr do core/macro_manager.py
