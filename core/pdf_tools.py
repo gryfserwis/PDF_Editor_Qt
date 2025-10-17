@@ -477,6 +477,86 @@ class PDFTools:
             if progressbar_callback:
                 progressbar_callback(idx + 1, len(selected_indices))
     
+    def remove_page_numbers_by_pattern(self, pdf_document, selected_indices: list, 
+                                      top_mm: float, bottom_mm: float,
+                                      progress_callback: Optional[Callable[[str], None]] = None,
+                                      progressbar_callback: Optional[Callable[[int, int], None]] = None) -> int:
+        """
+        Usuwa numery stron z marginesów poprzez wykrywanie wzorców tekstowych.
+        Bardziej zaawansowana wersja - szuka specyficznych wzorców numeracji.
+        
+        Args:
+            pdf_document: Dokument fitz (PyMuPDF)
+            selected_indices: Lista indeksów stron do przetworzenia
+            top_mm: Wysokość górnego marginesu w mm
+            bottom_mm: Wysokość dolnego marginesu w mm
+            progress_callback: Funkcja callback dla statusu
+            progressbar_callback: Funkcja callback dla paska postępu
+            
+        Returns:
+            Liczba stron, na których znaleziono i usunięto numery
+        """
+        import re
+        
+        if progress_callback:
+            progress_callback("Usuwanie numerów stron...")
+        
+        # Przeliczanie milimetrów na punkty
+        mm_to_points = self.MM_TO_POINTS
+        top_pt = top_mm * mm_to_points
+        bottom_pt = bottom_mm * mm_to_points
+        
+        # Wzorce numeracji stron
+        page_number_patterns = [
+            r'^\s*[-–]?\s*\d+\s*[-–]?\s*$',  # 1, -1-, - 1 -
+            r'^\s*(?:Strona|Page)\s+\d+\s+(?:z|of)\s+\d+\s*$', 
+            r'^\s*\d+\s*(?:/|-|\s+)\s*\d+\s*$',
+            r'^\s*\(\s*\d+\s*\)\s*$' 
+        ]
+        compiled_patterns = [re.compile(p, re.IGNORECASE) for p in page_number_patterns]
+        
+        modified_count = 0
+        
+        if progressbar_callback:
+            progressbar_callback(0, len(selected_indices))
+        
+        for idx, page_index in enumerate(selected_indices):
+            page = pdf_document.load_page(page_index)
+            rect = page.rect
+            
+            # Definicja obszarów skanowania
+            top_margin_rect = fitz.Rect(rect.x0, rect.y0, rect.x1, rect.y0 + top_pt)
+            bottom_margin_rect = fitz.Rect(rect.x0, rect.y1 - bottom_pt, rect.x1, rect.y1)
+            
+            scan_rects = [top_margin_rect, bottom_margin_rect]
+            found_and_removed = False
+            
+            for scan_rect in scan_rects:
+                text_blocks = page.get_text("blocks", clip=scan_rect)
+                
+                for block in text_blocks:
+                    block_text = block[4]
+                    lines = block_text.strip().split('\n')
+                    
+                    for line in lines:
+                        cleaned_line = line.strip()
+                        for pattern in compiled_patterns:
+                            if pattern.fullmatch(cleaned_line):
+                                text_instances = page.search_for(cleaned_line, clip=scan_rect)
+                                
+                                for inst in text_instances:
+                                    page.add_redact_annot(inst)
+                                    found_and_removed = True
+            
+            if found_and_removed:
+                page.apply_redactions()
+                modified_count += 1
+            
+            if progressbar_callback:
+                progressbar_callback(idx + 1, len(selected_indices))
+        
+        return modified_count
+    
     # ============================================================================
     # OBRACANIE STRON
     # ============================================================================

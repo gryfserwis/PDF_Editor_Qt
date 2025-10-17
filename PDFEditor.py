@@ -3472,8 +3472,8 @@ class SelectablePDFViewer:
             self._update_status("Musisz zaznaczyć przynajmniej jedną stronę PDF.")
             return
 
-        # 1. Otwarcie dialogu i pobranie wartości od użytkownika
-        dialog = PageNumberMarginDialog(self.master, initial_margin_mm=20, prefs_manager=self.prefs_manager) # Zakładam, że root to główne okno
+        # Otwarcie dialogu i pobranie wartości od użytkownika
+        dialog = PageNumberMarginDialog(self.master, initial_margin_mm=20, prefs_manager=self.prefs_manager)
         margins = dialog.result
 
         if margins is None:
@@ -3482,81 +3482,33 @@ class SelectablePDFViewer:
 
         top_mm = margins['top_mm']
         bottom_mm = margins['bottom_mm']
-        
-        # Przeliczanie milimetrów na punkty
-        mm_to_points = self.MM_TO_POINTS # Używamy stałej klasy
-        top_pt = top_mm * mm_to_points
-        bottom_pt = bottom_mm * mm_to_points
-
-        # ... (resztę kodu ustawiającą wzorce zostawiamy bez zmian) ...
-        page_number_patterns = [
-            r'^\s*[-–]?\s*\d+\s*[-–]?\s*$',  # 1, -1-, - 1 -
-            r'^\s*(?:Strona|Page)\s+\d+\s+(?:z|of)\s+\d+\s*$', 
-            r'^\s*\d+\s*(?:/|-|\s+)\s*\d+\s*$',
-            r'^\s*\(\s*\d+\s*\)\s*$' 
-        ]
-        compiled_patterns = [re.compile(p, re.IGNORECASE) for p in page_number_patterns]
 
         try:
             pages_to_process = sorted(list(self.selected_pages))
             if pages_to_process:     # Zapisz stan tylko jeśli są strony do modyfikacji
                 self._save_state_to_undo()
-            modified_count = 0
             
-            # Update status first to ensure it's visible immediately
-            self._update_status("Usuwanie numerów stron...")
-            self.show_progressbar(maximum=len(pages_to_process))
+            # Deleguj do PDFTools
+            def progress_callback(current, total):
+                if current == 0:
+                    self.show_progressbar(maximum=total)
+                self.update_progressbar(current)
+                if current == total:
+                    self.hide_progressbar()
             
-            for idx, page_index in enumerate(pages_to_process):
-                page = self.pdf_document.load_page(page_index)
-                rect = page.rect
-                
-                # 2. Definicja obszarów skanowania na podstawie wartości użytkownika
-                
-                # Margines Górny (od 0 do top_pt)
-                top_margin_rect = fitz.Rect(rect.x0, rect.y0, rect.x1, rect.y0 + top_pt)
-                
-                # Margines Dolny (od rect.y1 - bottom_pt do rect.y1)
-                bottom_margin_rect = fitz.Rect(rect.x0, rect.y1 - bottom_pt, rect.x1, rect.y1)
-                
-                scan_rects = [top_margin_rect, bottom_margin_rect]
-                
-                found_and_removed = False
-                
-                # ... (resztę logiki ekstrakcji i usuwania tekstu zostawiamy bez zmian) ...
-                
-                for scan_rect in scan_rects:
-                    text_blocks = page.get_text("blocks", clip=scan_rect)
-                    
-                    for block in text_blocks:
-                        block_text = block[4]
-                        lines = block_text.strip().split('\n')
-                        
-                        for line in lines:
-                            cleaned_line = line.strip()
-                            for pattern in compiled_patterns:
-                                if pattern.fullmatch(cleaned_line):
-                                    text_instances = page.search_for(cleaned_line, clip=scan_rect)
-                                    
-                                    for inst in text_instances:
-                                        page.add_redact_annot(inst)
-                                        found_and_removed = True
-                                        
-                if found_and_removed:
-                    page.apply_redactions()
-                    modified_count += 1
-                
-                self.update_progressbar(idx + 1)
-                    
-            # 3. Finalizacja
+            modified_count = self.pdf_tools.remove_page_numbers_by_pattern(
+                self.pdf_document, pages_to_process, top_mm, bottom_mm,
+                progress_callback=self._update_status,
+                progressbar_callback=progress_callback
+            )
+            
             self.hide_progressbar()
+            
             if modified_count > 0:
-          #      self._save_state_to_undo()
                 # Optymalizacja: odśwież tylko zmienione miniatury
                 self.show_progressbar(maximum=len(pages_to_process))
                 for i, page_index in enumerate(pages_to_process):
                     self._update_status(f"Usunięto numery stron na {modified_count} stronach, używając marginesów: G={top_mm:.1f}mm, D={bottom_mm:.1f}mm. Odświeżanie miniatur...")
-
                     self.update_single_thumbnail(page_index)
                     self.update_progressbar(i + 1)
                 self.hide_progressbar()
