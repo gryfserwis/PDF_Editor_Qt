@@ -3426,143 +3426,26 @@ class SelectablePDFViewer:
             self._update_status("Wstawianie numeracji anulowane przez użytkownika.")
             return
 
-        doc = self.pdf_document
-        self._update_status("Wstawianie numeracji stron...")
-        
-        MM_PT = self.MM_TO_POINTS 
-
         try:
-            self._save_state_to_undo() 
-            
-            start_number = settings['start_num']
-            mode = settings['mode']                 
-            direction = settings['alignment']        
-            position = settings['vertical_pos']      
-            mirror_margins = settings['mirror_margins']
-            format_mode = settings['format_type']    
-            
-            left_mm = settings['margin_left_mm']
-            right_mm = settings['margin_right_mm']
-
-            left_pt_base = left_mm * MM_PT
-            right_pt_base = right_mm * MM_PT
-            margin_v = settings['margin_vertical_mm'] * MM_PT
-            font_size = settings['font_size']
-            font = settings['font_name']
+            self._save_state_to_undo()
             
             selected_indices = sorted(self.selected_pages)
             
-            current_number = start_number
-            total_counted_pages = len(selected_indices) + start_number - 1 
+            # Deleguj do PDFTools
+            def progress_callback(current, total):
+                if current == 0:
+                    self.show_progressbar(maximum=total)
+                self.update_progressbar(current)
+                if current == total:
+                    self.hide_progressbar()
             
-            self.show_progressbar(maximum=len(selected_indices))
-            
-            for idx, i in enumerate(selected_indices):
-                page = doc.load_page(i) 
-                rect = page.rect
-                rotation = page.rotation
-
-                text = f"Strona {current_number} z {total_counted_pages}" if format_mode == 'full' else str(current_number)
-                text_width = fitz.get_text_length(text, fontname=font, fontsize=font_size)
-
-                numerowana_strona = idx  # numerowana_strona liczymy od 0
-                # 1. Ustal align
-                if mode == "lustrzana":
-                    if direction == "lewa":
-                        align = "lewa" if numerowana_strona % 2 == 0 else "prawa"
-                    elif direction == "prawa":
-                        align = "prawa" if numerowana_strona % 2 == 0 else "lewa"
-                    else:
-                        align = "srodek"
-                else:
-                    align = direction
-
-                # 2. Korekta align przy rotacji poziomej
-                # if rotation == 270 and align in ("lewa", "prawa"):
-                #align = "prawa" if align == "lewa" else "lewa"
-
-                # 3. Pozycjonowanie numeru
-                if mirror_margins:
-                    if numerowana_strona % 2 == 1:
-                        left_pt, right_pt = right_pt_base, left_pt_base
-                    else:
-                        left_pt, right_pt = left_pt_base, right_pt_base
-                else:
-                    left_pt, right_pt = left_pt_base, right_pt_base
-
-                # --- LOGIKA POZYCJONOWANIA ---
-                if rotation == 0:
-                    if align == "lewa":
-                        x = rect.x0 + left_pt
-                    elif align == "prawa":
-                        x = rect.x1 - right_pt - text_width
-                    elif align == "srodek":
-                        text_area_w = rect.width - left_pt - right_pt
-                        x = rect.x0 + left_pt + (text_area_w / 2) - (text_width / 2)
-                    y = rect.y0 + margin_v + font_size if position == "gora" else rect.y1 - margin_v
-                    angle = 0
-                elif rotation == 90:
-                    lp, rp = left_pt, right_pt  
-                    x = rect.y0 + margin_v + font_size if position == "gora" else rect.y1 - margin_v
-                    if align == "lewa":
-                        y = rect.x1 - lp
-                    elif align == "prawa":
-                        y = rect.x0 + rp + text_width
-                    elif align == "srodek":
-                        text_area_w = rect.width - lp - rp
-                        y = rect.x0 + rp + (text_area_w / 2) + (text_width / 2)
-                    angle = 90
-                elif rotation == 180:
-                    lp, rp = left_pt, right_pt  
-                    if align == "lewa":
-                        x = rect.x1 - lp 
-                    elif align == "prawa":
-                        x = rect.x0 + rp + text_width
-                    elif align == "srodek":
-                        text_area_w = rect.width - lp - rp
-                        x = rect.x0 + rp + (text_area_w / 2) + (text_width / 2)
-                    y = rect.y1 - margin_v - font_size if position == "gora" else rect.y0 + margin_v
-                    angle = 180
-                elif rotation == 270:
-                    lp, rp = left_pt, right_pt
-                    x = rect.y1 - margin_v if position == "gora" else rect.y0 + margin_v
-                    if align == "lewa":
-                        y = rect.x0 + lp
-                    elif align == "prawa":
-                        y = rect.x1 - rp - text_width
-                    elif align == "srodek":
-                        text_area_w = rect.width - lp - rp
-                        y = rect.x0 + lp + (text_area_w / 2) - (text_width / 2)
-                    angle = 270
-     #           elif rotation == 270:
-     #              x = rect.y1 - margin_v if position == "gora" else rect.y0 + margin_v
-      #              if align == "lewa":
-       #                 y = rect.x1 - right_pt - text_width
-        #            elif align == "prawa":
-         #               y = rect.x0 + left_pt
-          #          elif align == "srodek":
-           #             text_area_w = rect.width - left_pt - right_pt
-            #            y = rect.x0 + left_pt + (text_area_w / 2) - (text_width / 2)
-             #       angle = 270
-                else:
-                    x = rect.x0 + left_pt
-                    y = rect.y1 - margin_v
-                    angle = 0
-
-                page.insert_text(
-                    fitz.Point(x, y),
-                    text,
-                    fontsize=font_size,
-                    fontname=font,
-                    color=(0, 0, 0),
-                    rotate=angle
-                )
-
-                print(f"✅ Strona {i+1}: numer {text}, align={align}, mirror={mirror_margins}, x={x:.2f}, y={y:.2f}, rotacja={rotation}°")
-                current_number += 1
-                self.update_progressbar(idx + 1)
-
-            self.hide_progressbar()
+            self.pdf_tools.insert_page_numbers(
+                self.pdf_document,
+                selected_indices,
+                settings,
+                progress_callback=self._update_status,
+                progressbar_callback=progress_callback
+            )
             
             # Optymalizacja: odśwież tylko zmienione miniatury
             self.show_progressbar(maximum=len(selected_indices))
@@ -3575,14 +3458,14 @@ class SelectablePDFViewer:
             
             self._update_status(f"Numeracja wstawiona na {len(selected_indices)} stronach.")
             self._record_action('insert_page_numbers', 
-                start_num=start_number,
-                mode=mode,
-                alignment=direction,
-                vertical_pos=position,
-                mirror_margins=mirror_margins,
-                format_type=format_mode,
-                margin_left_mm=left_mm,
-                margin_right_mm=right_mm,
+                start_num=settings['start_num'],
+                mode=settings['mode'],
+                alignment=settings['alignment'],
+                vertical_pos=settings['vertical_pos'],
+                mirror_margins=settings['mirror_margins'],
+                format_type=settings['format_type'],
+                margin_left_mm=settings['margin_left_mm'],
+                margin_right_mm=settings['margin_right_mm'],
                 top_mm=settings.get('top_mm', 20),
                 bottom_mm=settings.get('bottom_mm', 20))
 
