@@ -17,20 +17,350 @@ from pypdf.generic import RectangleObject, FloatObject, ArrayObject
 from pypdf.generic import NameObject # Dodaj import dla NameObject
 import json
 
-# Import from refactored modules
-from utils import (
-    BASE_DIR, ICON_FOLDER, FOCUS_HIGHLIGHT_COLOR, FOCUS_HIGHLIGHT_WIDTH,
-    PROGRAM_TITLE, PROGRAM_VERSION, PROGRAM_DATE,
-    A4_WIDTH_POINTS, A4_HEIGHT_POINTS, MM_TO_POINTS,
-    BG_IMPORT, GRAY_FG, COPYRIGHT_INFO,
-    BG_PRIMARY, BG_SECONDARY, BG_BUTTON_DEFAULT, FG_TEXT,
-    mm2pt, validate_float_range, generate_unique_export_filename, resource_path,
-    custom_messagebox, Tooltip
-)
-from core import PreferencesManager, PDFTools, MacroManager
+# Definicja BASE_DIR i inne stałe
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# === DIALOGS AND UI COMPONENTS ===
-# PreferencesManager has been moved to core/preferences_manager.py
+def get_icon_folder():
+    if getattr(sys, 'frozen', False):
+        return os.path.join(sys._MEIPASS, "icons")
+    else:
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons")
+
+ICON_FOLDER = get_icon_folder()
+
+#FOCUS_HIGHLIGHT_COLOR = "#B3E5FC" # Czarny (Black)
+FOCUS_HIGHLIGHT_COLOR = "#d3d3d3" # Czarny (Black)
+FOCUS_HIGHLIGHT_WIDTH = 6       # Szerokość ramki fokusu (stała)
+ 
+# DANE PROGRAMU
+PROGRAM_TITLE = "GRYF PDF Editor" 
+PROGRAM_VERSION = "5.6.0"
+PROGRAM_DATE = date.today().strftime("%Y-%m-%d")
+
+# === STAŁE DLA A4 [w punktach PDF i mm] ===
+A4_WIDTH_POINTS = 595.276 
+A4_HEIGHT_POINTS = 841.89
+MM_TO_POINTS = 72 / 25.4 # ~2.8346
+
+def mm2pt(mm):
+    return float(mm) * MM_TO_POINTS
+
+
+# === STAŁE KOLORY NARZĘDZIOWE (jeśli ich nie masz) ===
+# Musisz zdefiniować te kolory, jeśli ich nie masz, dla przycisku importu
+BG_IMPORT = "#F0AD4E" # np. Jakiś pomarańczowy dla importu
+GRAY_FG = "#555555" # Jeśli używasz tego dla ikon
+
+COPYRIGHT_INFO = (
+    "Program stanowi wyłączną własność intelektualną Centrum Graficznego Gryf sp. z o.o.\n\n"
+    "Wszelkie prawa zastrzeżone. Kopiowanie, modyfikowanie oraz rozpowszechnianie "
+    "programu bez pisemnej zgody autora jest zabronione."
+)
+
+# === STAŁE KOLORYSTYKA DLA SPOJNOSCI ===
+BG_PRIMARY = '#F0F0F0'  # Główne tło okien i dialogów
+BG_SECONDARY = '#E0E0E0' # Tło paneli kontrolnych/przycisków
+BG_BUTTON_DEFAULT = "#D0D0D0" # Domyślny kolor przycisków
+FG_TEXT = "#444444" # Kolor tekstu na przyciskach
+
+# === STAŁE DLA A4 (w punktach PDF) ===
+A4_WIDTH_POINTS = 595.276 
+A4_HEIGHT_POINTS = 841.89
+
+def validate_float_range(value, minval, maxval):
+    if not value:
+        return True
+    try:
+        v = float(value.replace(",", "."))
+        return minval <= v <= maxval
+    except Exception:
+        return False
+
+def generate_unique_export_filename(directory, base_name, page_range, extension):
+    """
+    Generuje unikalną nazwę pliku w formacie:
+    "Eksport z pliku [base_name]_[page_range]_[date]_[time].[extension]"
+    Jeśli plik istnieje, dodaje (1), (2), (3) itd.
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"Eksport_{page_range}_{timestamp}.{extension}"
+    filepath = os.path.join(directory, filename)
+    
+    # Jeśli plik istnieje, dodaj numer
+    if os.path.exists(filepath):
+        counter = 1
+        base_without_ext = f"Eksport_{page_range}_{timestamp}"
+        while True:
+            filename = f"{base_without_ext} ({counter}).{extension}"
+            filepath = os.path.join(directory, filename)
+            if not os.path.exists(filepath):
+                break
+            counter += 1
+    
+    return filepath
+        
+def resource_path(relative_path):
+    """
+    Tworzy poprawną ścieżkę do zasobów (logo, ikony itp.).
+    Działa w trybie deweloperskim i po spakowaniu PyInstallerem.
+    """
+    try:
+        # Aplikacja spakowana (PyInstaller --onefile)
+        base_path = sys._MEIPASS
+    except AttributeError:
+        # Tryb deweloperski (po prostu katalog skryptu)
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        
+    return os.path.join(base_path, relative_path)
+  
+import tkinter as tk
+from tkinter import ttk, messagebox
+
+
+import tkinter as tk
+from tkinter import ttk
+
+def custom_messagebox(parent, title, message, typ="info"):
+    """
+    Wyświetla niestandardowe okno dialogowe wyśrodkowane na oknie aplikacji (nie na środku ekranu).
+    Brak obsługi ikon PNG, okno jest nieco mniejsze.
+    """
+    import tkinter as tk
+    from tkinter import ttk
+
+    dialog = tk.Toplevel(parent)
+    dialog.title(title)
+    dialog.transient(parent)
+    dialog.grab_set()
+    dialog.resizable(False, False)
+
+    # Kolory dla różnych typów (opcjonalnie)
+    colors = {
+        "info": "#d1ecf1",
+        "error": "#f8d7da",
+        "warning": "#fff3cd",
+        "question": "#d1ecf1",
+        "yesnocancel": "#d1ecf1"
+    }
+    bg_color = colors.get(typ, "#f0f0f0")
+
+    main_frame = ttk.Frame(dialog, padding="12")
+    main_frame.pack(fill="both", expand=True)
+    content_frame = ttk.Frame(main_frame)
+    content_frame.pack(fill="both", expand=True, pady=(0, 12))
+
+    # Tylko tekst komunikatu, bez ikony
+    msg_label = tk.Label(content_frame, text=message, justify="left", wraplength=310, font=("Arial", 10))
+    msg_label.pack(fill="both", expand=True, pady=6)
+
+    result = [None]
+
+    def on_yes():
+        result[0] = True
+        dialog.destroy()
+    def on_no():
+        result[0] = False
+        dialog.destroy()
+    def on_cancel():
+        result[0] = None
+        dialog.destroy()
+    def on_ok():
+        dialog.destroy()
+
+    button_frame = ttk.Frame(main_frame)
+    button_frame.pack()
+    if typ == "question":
+        yes_btn = ttk.Button(button_frame, text="Tak", command=on_yes, width=10)
+        yes_btn.pack(side="left", padx=4)
+        no_btn = ttk.Button(button_frame, text="Nie", command=on_no, width=10)
+        no_btn.pack(side="left", padx=4)
+        dialog.bind("<Return>", lambda e: on_yes())
+        dialog.bind("<Escape>", lambda e: on_no())
+        yes_btn.focus_set()
+    elif typ == "yesnocancel":
+        yes_btn = ttk.Button(button_frame, text="Tak", command=on_yes, width=10)
+        yes_btn.pack(side="left", padx=4)
+        no_btn = ttk.Button(button_frame, text="Nie", command=on_no, width=10)
+        no_btn.pack(side="left", padx=4)
+        cancel_btn = ttk.Button(button_frame, text="Anuluj", command=on_cancel, width=10)
+        cancel_btn.pack(side="left", padx=4)
+        dialog.bind("<Return>", lambda e: on_yes())
+        dialog.bind("<Escape>", lambda e: on_cancel())
+        dialog.protocol("WM_DELETE_WINDOW", on_cancel)
+        yes_btn.focus_set()
+    else:
+        ok_btn = ttk.Button(button_frame, text="OK", command=on_ok, width=10)
+        ok_btn.pack(padx=4)
+        dialog.bind("<Return>", lambda e: on_ok())
+        dialog.bind("<Escape>", lambda e: on_ok())
+        ok_btn.focus_set()
+
+    # Wyśrodkuj na rodzicu
+    dialog.update_idletasks()
+    dialog_w = dialog.winfo_width()
+    dialog_h = dialog.winfo_height()
+    parent_x = parent.winfo_rootx()
+    parent_y = parent.winfo_rooty()
+    parent_w = parent.winfo_width()
+    parent_h = parent.winfo_height()
+    x = parent_x + (parent_w - dialog_w) // 2
+    y = parent_y + (parent_h - dialog_h) // 2
+    dialog.geometry(f"+{x}+{y}")
+    dialog.wait_window()
+    return result[0]
+
+# === SYSTEM ZARZĄDZANIA PREFERENCJAMI ===
+class PreferencesManager:
+    """Zarządza preferencjami programu i dialogów, zapisuje/odczytuje z pliku preferences.txt"""
+    
+    def __init__(self, filepath="preferences.txt"):
+        self.filepath = os.path.join(BASE_DIR, filepath)
+        self.preferences = {}
+        self.defaults = {
+            # Preferencje globalne
+            'default_save_path': '',
+            'default_read_path': '',
+            'last_open_path': '',
+            'last_save_path': '',
+            'thumbnail_quality': 'Średnia',
+            'confirm_delete': 'False',
+            'export_image_dpi': '300',  # DPI dla eksportu obrazów (150, 300, 600)
+            
+            # PageCropResizeDialog
+            'PageCropResizeDialog.crop_mode': 'nocrop',
+            'PageCropResizeDialog.margin_top': '10',
+            'PageCropResizeDialog.margin_bottom': '10',
+            'PageCropResizeDialog.margin_left': '10',
+            'PageCropResizeDialog.margin_right': '10',
+            'PageCropResizeDialog.resize_mode': 'noresize',
+            'PageCropResizeDialog.target_format': 'A4',
+            'PageCropResizeDialog.custom_width': '',
+            'PageCropResizeDialog.custom_height': '',
+            'PageCropResizeDialog.position_mode': 'center',
+            'PageCropResizeDialog.offset_x': '0',
+            'PageCropResizeDialog.offset_y': '0',
+            
+            # PageNumberingDialog
+            'PageNumberingDialog.margin_left': '35',
+            'PageNumberingDialog.margin_right': '25',
+            'PageNumberingDialog.margin_vertical_mm': '15',
+            'PageNumberingDialog.vertical_pos': 'dol',
+            'PageNumberingDialog.alignment': 'prawa',
+            'PageNumberingDialog.mode': 'normalna',
+            'PageNumberingDialog.start_page': '1',
+            'PageNumberingDialog.start_number': '1',
+            'PageNumberingDialog.font_name': 'Times-Roman',
+            'PageNumberingDialog.font_size': '12',
+            'PageNumberingDialog.mirror_margins': 'False',
+            'PageNumberingDialog.format_type': 'simple',
+            
+            # ShiftContentDialog
+            'ShiftContentDialog.x_direction': 'P',
+            'ShiftContentDialog.y_direction': 'G',
+            'ShiftContentDialog.x_value': '0',
+            'ShiftContentDialog.y_value': '0',
+            
+            # PageNumberMarginDialog
+            'PageNumberMarginDialog.top_margin': '20',
+            'PageNumberMarginDialog.bottom_margin': '20',
+            
+            # MergePageGridDialog
+            'MergePageGridDialog.sheet_format': 'A4',
+            'MergePageGridDialog.orientation': 'Pionowa',
+            'MergePageGridDialog.margin_top_mm': '5',
+            'MergePageGridDialog.margin_bottom_mm': '5',
+            'MergePageGridDialog.margin_left_mm': '5',
+            'MergePageGridDialog.margin_right_mm': '5',
+            'MergePageGridDialog.spacing_x_mm': '10',
+            'MergePageGridDialog.spacing_y_mm': '10',
+            'MergePageGridDialog.dpi_var': '300',
+            
+            # EnhancedPageRangeDialog
+            'EnhancedPageRangeDialog.last_range': '',
+            
+            # ImageImportSettingsDialog
+            'ImageImportSettingsDialog.target_format': 'A4',
+            'ImageImportSettingsDialog.orientation': 'auto',
+            'ImageImportSettingsDialog.margin_mm': '10',
+            'ImageImportSettingsDialog.scaling_mode': 'DOPASUJ',
+            'ImageImportSettingsDialog.alignment_mode': 'SRODEK',
+            'ImageImportSettingsDialog.scale_factor': '100.0',
+            'ImageImportSettingsDialog.page_orientation': 'PIONOWO',
+            'ImageImportSettingsDialog.custom_width': '',
+            'ImageImportSettingsDialog.custom_height': '',
+            'ImageImportSettingsDialog.keep_ratio': 'True',
+            
+            # Color detection settings
+            'color_detect_threshold': '5',
+            'color_detect_samples': '300',
+            'color_detect_scale': '0.2',
+        }
+        self.load_preferences()
+    
+    def load_preferences(self):
+        """Wczytuje preferencje z pliku"""
+        if os.path.exists(self.filepath):
+            try:
+                with open(self.filepath, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and '=' in line:
+                            key, value = line.split('=', 1)
+                            self.preferences[key.strip()] = value.strip()
+            except Exception as e:
+                print(f"Błąd wczytywania preferencji: {e}")
+        # Wypełnij brakujące wartości domyślnymi
+        for key, value in self.defaults.items():
+            if key not in self.preferences:
+                self.preferences[key] = value
+    
+    def save_preferences(self):
+        """Zapisuje preferencje do pliku"""
+        try:
+            with open(self.filepath, 'w', encoding='utf-8') as f:
+                for key, value in sorted(self.preferences.items()):
+                    f.write(f"{key}={value}\n")
+        except Exception as e:
+            print(f"Błąd zapisywania preferencji: {e}")
+    
+    def get(self, key, default=None):
+        """Pobiera wartość preferencji"""
+        return self.preferences.get(key, default if default is not None else self.defaults.get(key, ''))
+    
+    def set(self, key, value):
+        """Ustawia wartość preferencji"""
+        self.preferences[key] = str(value)
+        self.save_preferences()
+    
+    def reset_to_defaults(self):
+        """Przywraca wszystkie preferencje do wartości domyślnych"""
+        self.preferences = self.defaults.copy()
+        self.save_preferences()
+    
+    def reset_dialog_defaults(self, dialog_name):
+        """Przywraca wartości domyślne dla konkretnego dialogu"""
+        for key in list(self.preferences.keys()):
+            if key.startswith(f"{dialog_name}."):
+                if key in self.defaults:
+                    self.preferences[key] = self.defaults[key]
+        self.save_preferences()
+    
+    def get_profiles(self, profile_key):
+        """Pobiera profile z preferencji jako słownik"""
+        profiles_json = self.get(profile_key, '{}')
+        try:
+            return json.loads(profiles_json)
+        except:
+            return {}
+    
+    def save_profiles(self, profile_key, profiles_dict):
+        """Zapisuje profile do preferencji jako JSON"""
+        profiles_json = json.dumps(profiles_dict, ensure_ascii=False)
+        self.set(profile_key, profiles_json)
+
 
 class PreferencesDialog(tk.Toplevel):
     """Okno dialogowe preferencji programu"""
@@ -570,7 +900,67 @@ class PageCropResizeDialog(tk.Toplevel):
         self.result = None
         self.destroy()
         
-# === Tooltip class has been moved to utils/tooltip.py ===
+class Tooltip:
+    """
+    Tworzy prosty, wielokrotnie używalny dymek pomocy (tooltip) 
+    dla widgetów Tkinter (przycisków, etykiet, itp.).
+    """
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tip_window = None
+        self.id = None
+        self.x = 0
+        self.y = 0
+        
+        # Oczekuje na najechanie kursorem: po 500 ms wywołuje show()
+        self.widget.bind("<Enter>", self.schedule)
+        # Po opuszczeniu kursora: wywołuje hide()
+        self.widget.bind("<Leave>", self.hide)
+
+    def schedule(self, event=None):
+        # Anuluje poprzednie oczekiwanie, jeśli nastąpiło ponowne wejście
+        self.cancel()
+        # Ustawia nowe oczekiwanie na 500 ms (0.5 sekundy)
+        self.id = self.widget.after(500, self.show)
+
+    def cancel(self):
+        # Anuluje zaplanowane wyświetlenie dymka (jeśli istnieje)
+        if self.id:
+            self.widget.after_cancel(self.id)
+            self.id = None
+
+    def show(self, event=None):
+        """Wyświetla dymek pomocy."""
+        if self.tip_window or not self.text:
+            return
+
+        # 1. Tworzenie okna Toplevel
+        x = self.widget.winfo_rootx() + 20 # Przesunięcie o 20px w prawo
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 1 # Pod widgetem
+        
+        self.tip_window = tk.Toplevel(self.widget)
+        self.tip_window.wm_overrideredirect(True) # Usuwa ramkę okna
+        self.tip_window.wm_geometry(f"+{x}+{y}")
+
+        # 2. Dodanie etykiety z tekstem
+        label = tk.Label(self.tip_window, text=self.text, justify=tk.LEFT,
+                         background="#ffffe0", relief=tk.SOLID, borderwidth=1,
+                         font=("tahoma", "8", "normal"))
+        label.pack(ipadx=1) # Minimalny padding wewnętrzny
+
+    def hide(self, event=None):
+        """Ukrywa i niszczy dymek pomocy."""
+        self.cancel()
+        if self.tip_window:
+            self.tip_window.destroy()
+        self.tip_window = None
+
+# Przykład użycia tej klasy na przycisku:
+# Tooltip(przycisk_numeracja, "Wstawia numerację na zaznaczonych stronach.")
+  
+import tkinter as tk
+from tkinter import ttk, messagebox
 
 class PageNumberingDialog(tk.Toplevel):
     DEFAULTS = {
@@ -2372,7 +2762,8 @@ class MacroRecordingDialog(tk.Toplevel):
             return
         
         # Check if macro with this name already exists
-        if self.viewer.macro_manager.macro_exists(name):
+        macros = self.viewer.prefs_manager.get_profiles('macros')
+        if name in macros:
             custom_messagebox(self, "Błąd", f"Makro o nazwie '{name}' już istnieje. Wybierz inną nazwę.", typ="error")
             return
         
@@ -2385,32 +2776,39 @@ class MacroRecordingDialog(tk.Toplevel):
         self.stop_button.config(state=tk.NORMAL)
         self.status_label.config(text=f"Nagrywanie makra '{name}' w toku...", foreground="red")
         
-        # Start recording in MacroManager
-        self.viewer.macro_manager.start_recording(name)
+        # Start recording in viewer
+        self.viewer.macro_recording = True
+        self.viewer.current_macro_actions = []
+        self.viewer.macro_recording_name = name
         self.viewer._update_status(f"Nagrywanie makra '{name}'...")
     
     def on_stop(self):
         """Stop recording and save macro"""
-        actions_count = self.viewer.macro_manager.get_actions_count()
-        if actions_count == 0:
+        if not self.viewer.current_macro_actions:
             custom_messagebox(self, "Informacja", "Makro nie zawiera żadnych akcji.", typ="info")
             self.on_cancel()
             return
         
-        # Stop recording and get recorded actions
-        macro_name, actions = self.viewer.macro_manager.stop_recording()
-        
         # Save macro
-        self.viewer.macro_manager.save_macro(macro_name, actions)
+        macros = self.viewer.prefs_manager.get_profiles('macros')
+        macros[self.macro_name] = {
+            'actions': self.viewer.current_macro_actions,
+            'shortcut': ''
+        }
+        self.viewer.prefs_manager.save_profiles('macros', macros)
         
         custom_messagebox(
             self,
             "Sukces",
-            f"Makro '{macro_name}' zostało zapisane z {actions_count} akcjami.",
+            f"Makro '{self.macro_name}' zostało zapisane z {len(self.viewer.current_macro_actions)} akcjami.",
             typ="info"
         )
         
-        self.viewer._update_status(f"Makro '{macro_name}' zapisane.")
+        # Stop recording
+        self.viewer.macro_recording = False
+        self.viewer.macro_recording_name = None
+        self.viewer.current_macro_actions = []
+        self.viewer._update_status(f"Makro '{self.macro_name}' zapisane.")
         self.viewer.refresh_macros_menu()
         
         # Call refresh callback if provided
@@ -2422,7 +2820,9 @@ class MacroRecordingDialog(tk.Toplevel):
     def on_cancel(self):
         """Cancel recording"""
         if self.recording:
-            self.viewer.macro_manager.cancel_recording()
+            self.viewer.macro_recording = False
+            self.viewer.macro_recording_name = None
+            self.viewer.current_macro_actions = []
             self.viewer._update_status("Nagrywanie makra anulowane.")
         self.destroy()
 
@@ -3246,68 +3646,169 @@ class SelectablePDFViewer:
         self._update_status(f"Można przeciągać tylko pliki PDF lub obrazy! Otrzymano: {filepath}")
 
     def _crop_pages(self, pdf_bytes, selected_indices, top_mm, bottom_mm, left_mm, right_mm, reposition=False, pos_mode="center", offset_x_mm=0, offset_y_mm=0):
-        """Wrapper dla PDFTools.crop_pages z integracją GUI."""
-        def progress_callback(current, total):
-            if current == 0:
-                self.show_progressbar(maximum=total)
-            self.update_progressbar(current)
-            if current == total:
-                self.hide_progressbar()
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        writer = PdfWriter()
+        total_pages = len(reader.pages)
         
-        return self.pdf_tools.crop_pages(
-            pdf_bytes, selected_indices, top_mm, bottom_mm, left_mm, right_mm,
-            reposition, pos_mode, offset_x_mm, offset_y_mm,
-            progress_callback=self._update_status,
-            progressbar_callback=progress_callback
-        )
+        # Update status first to ensure it's visible immediately
+        self._update_status("Kadrowanie stron...")
+        self.show_progressbar(maximum=total_pages)
+        
+        for i, page in enumerate(reader.pages):
+            if i not in selected_indices:
+                writer.add_page(page)
+                self.update_progressbar(i + 1)
+                continue
+            orig_mediabox = RectangleObject([float(v) for v in page.mediabox])
+            x0, y0, x1, y1 = [float(v) for v in orig_mediabox]
+            new_x0 = x0 + mm2pt(left_mm)
+            new_y0 = y0 + mm2pt(bottom_mm)
+            new_x1 = x1 - mm2pt(right_mm)
+            new_y1 = y1 - mm2pt(top_mm)
+            if new_x0 >= new_x1 or new_y0 >= new_y1:
+                writer.add_page(page)
+                self.update_progressbar(i + 1)
+                continue
+            new_rect = RectangleObject([new_x0, new_y0, new_x1, new_y1])
+
+            # Ustaw tylko cropbox, trimbox, artbox - mediabox zostaje oryginalny!
+            page.cropbox = new_rect
+            page.trimbox = new_rect
+            page.artbox = new_rect
+            # Przywracamy mediabox (nie zmieniamy!)
+            page.mediabox = orig_mediabox
+
+            # opcjonalnie: przesuwanie zawartości strony (zostawiam bez zmian)
+            if reposition:
+                dx = mm2pt(offset_x_mm) if pos_mode == "custom" else 0
+                dy = mm2pt(offset_y_mm) if pos_mode == "custom" else 0
+                if dx != 0 or dy != 0:
+                    transform = Transformation().translate(tx=dx, ty=dy)
+                    page.add_transformation(transform)
+
+            writer.add_page(page)
+            self.update_progressbar(i + 1)
+        
+        self.hide_progressbar()
+        out = io.BytesIO()
+        writer.write(out)
+        out.seek(0)
+        return out.read()
         
     import fitz  # PyMuPDF
 
     def _mask_crop_pages(self, pdf_bytes, selected_indices, top_mm, bottom_mm, left_mm, right_mm):
-        """Wrapper dla PDFTools.mask_crop_pages z integracją GUI."""
-        def progress_callback(current, total):
-            if current == 0:
-                self.show_progressbar(maximum=total)
-            self.update_progressbar(current)
-            if current == total:
-                self.hide_progressbar()
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        MM_TO_PT = 72 / 25.4
         
-        return self.pdf_tools.mask_crop_pages(
-            pdf_bytes, selected_indices, top_mm, bottom_mm, left_mm, right_mm,
-            progress_callback=self._update_status,
-            progressbar_callback=progress_callback
-        )
+        # Update status first to ensure it's visible immediately
+        self._update_status("Maskowanie marginesów...")
+        self.show_progressbar(maximum=len(selected_indices))
+        
+        for idx_progress, i in enumerate(selected_indices):
+            page = doc[i]
+            rect = page.rect
+
+            # Wylicz marginesy w punktach
+            left_pt   = left_mm * MM_TO_PT
+            right_pt  = right_mm * MM_TO_PT
+            top_pt    = top_mm * MM_TO_PT
+            bottom_pt = bottom_mm * MM_TO_PT
+
+            # Lewy margines
+            if left_pt > 0:
+                mask_rect = fitz.Rect(rect.x0, rect.y0, rect.x0 + left_pt, rect.y1)
+                page.draw_rect(mask_rect, color=(1,1,1), fill=(1,1,1), overlay=True)
+            # Prawy margines
+            if right_pt > 0:
+                mask_rect = fitz.Rect(rect.x1 - right_pt, rect.y0, rect.x1, rect.y1)
+                page.draw_rect(mask_rect, color=(1,1,1), fill=(1,1,1), overlay=True)
+            # Górny margines
+            if top_pt > 0:
+                mask_rect = fitz.Rect(rect.x0, rect.y1 - top_pt, rect.x1, rect.y1)
+                page.draw_rect(mask_rect, color=(1,1,1), fill=(1,1,1), overlay=True)
+            # Dolny margines
+            if bottom_pt > 0:
+                mask_rect = fitz.Rect(rect.x0, rect.y0, rect.x1, rect.y0 + bottom_pt)
+                page.draw_rect(mask_rect, color=(1,1,1), fill=(1,1,1), overlay=True)
+            
+            self.update_progressbar(idx_progress + 1)
+
+        self.hide_progressbar()
+        output_bytes = doc.write()
+        doc.close()
+        return output_bytes
 
     def _resize_scale(self, pdf_bytes, selected_indices, width_mm, height_mm):
-        """Wrapper dla PDFTools.resize_pages_with_scale z integracją GUI."""
-        def progress_callback(current, total):
-            if current == 0:
-                self.show_progressbar(maximum=total)
-            self.update_progressbar(current)
-            if current == total:
-                self.hide_progressbar()
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        writer = PdfWriter()
+        target_width = mm2pt(width_mm)
+        target_height = mm2pt(height_mm)
+        total_pages = len(reader.pages)
         
-        return self.pdf_tools.resize_pages_with_scale(
-            pdf_bytes, selected_indices, width_mm, height_mm,
-            progress_callback=self._update_status,
-            progressbar_callback=progress_callback
-        )
+        # Update status first to ensure it's visible immediately
+        self._update_status("Zmiana rozmiaru stron ze skalowaniem...")
+        self.show_progressbar(maximum=total_pages)
+        
+        for i, page in enumerate(reader.pages):
+            if i not in selected_indices:
+                writer.add_page(page)
+                self.update_progressbar(i + 1)
+                continue
+            orig_w = float(page.mediabox.width)
+            orig_h = float(page.mediabox.height)
+            scale = min(target_width / orig_w, target_height / orig_h)
+            dx = (target_width - orig_w * scale) / 2
+            dy = (target_height - orig_h * scale) / 2
+            transform = Transformation().scale(sx=scale, sy=scale).translate(tx=dx, ty=dy)
+            page.add_transformation(transform)
+            page.mediabox = RectangleObject([0, 0, target_width, target_height])
+            page.cropbox = RectangleObject([0, 0, target_width, target_height])
+            writer.add_page(page)
+            self.update_progressbar(i + 1)
+        
+        self.hide_progressbar()
+        out = io.BytesIO()
+        writer.write(out)
+        out.seek(0)
+        return out.read()
 
     def _resize_noscale(self, pdf_bytes, selected_indices, width_mm, height_mm, pos_mode="center", offset_x_mm=0, offset_y_mm=0):
-        """Wrapper dla PDFTools.resize_pages_without_scale z integracją GUI."""
-        def progress_callback(current, total):
-            if current == 0:
-                self.show_progressbar(maximum=total)
-            self.update_progressbar(current)
-            if current == total:
-                self.hide_progressbar()
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        writer = PdfWriter()
+        target_width = mm2pt(width_mm)
+        target_height = mm2pt(height_mm)
+        total_pages = len(reader.pages)
         
-        return self.pdf_tools.resize_pages_without_scale(
-            pdf_bytes, selected_indices, width_mm, height_mm,
-            pos_mode, offset_x_mm, offset_y_mm,
-            progress_callback=self._update_status,
-            progressbar_callback=progress_callback
-        )
+        # Update status first to ensure it's visible immediately
+        self._update_status("Zmiana rozmiaru stron bez skalowania...")
+        self.show_progressbar(maximum=total_pages)
+        
+        for i, page in enumerate(reader.pages):
+            if i not in selected_indices:
+                writer.add_page(page)
+                self.update_progressbar(i + 1)
+                continue
+            orig_w = float(page.mediabox.width)
+            orig_h = float(page.mediabox.height)
+            if pos_mode == "center":
+                dx = (target_width - orig_w) / 2
+                dy = (target_height - orig_h) / 2
+            else:
+                dx = mm2pt(offset_x_mm)
+                dy = mm2pt(offset_y_mm)
+            transform = Transformation().translate(tx=dx, ty=dy)
+            page.add_transformation(transform)
+            page.mediabox = RectangleObject([0, 0, target_width, target_height])
+            page.cropbox = RectangleObject([0, 0, target_width, target_height])
+            writer.add_page(page)
+            self.update_progressbar(i + 1)
+        
+        self.hide_progressbar()
+        out = io.BytesIO()
+        writer.write(out)
+        out.seek(0)
+        return out.read()
 
     def apply_page_crop_resize_dialog(self):
         """
@@ -3416,26 +3917,143 @@ class SelectablePDFViewer:
             self._update_status("Wstawianie numeracji anulowane przez użytkownika.")
             return
 
+        doc = self.pdf_document
+        self._update_status("Wstawianie numeracji stron...")
+        
+        MM_PT = self.MM_TO_POINTS 
+
         try:
-            self._save_state_to_undo()
+            self._save_state_to_undo() 
+            
+            start_number = settings['start_num']
+            mode = settings['mode']                 
+            direction = settings['alignment']        
+            position = settings['vertical_pos']      
+            mirror_margins = settings['mirror_margins']
+            format_mode = settings['format_type']    
+            
+            left_mm = settings['margin_left_mm']
+            right_mm = settings['margin_right_mm']
+
+            left_pt_base = left_mm * MM_PT
+            right_pt_base = right_mm * MM_PT
+            margin_v = settings['margin_vertical_mm'] * MM_PT
+            font_size = settings['font_size']
+            font = settings['font_name']
             
             selected_indices = sorted(self.selected_pages)
             
-            # Deleguj do PDFTools
-            def progress_callback(current, total):
-                if current == 0:
-                    self.show_progressbar(maximum=total)
-                self.update_progressbar(current)
-                if current == total:
-                    self.hide_progressbar()
+            current_number = start_number
+            total_counted_pages = len(selected_indices) + start_number - 1 
             
-            self.pdf_tools.insert_page_numbers(
-                self.pdf_document,
-                selected_indices,
-                settings,
-                progress_callback=self._update_status,
-                progressbar_callback=progress_callback
-            )
+            self.show_progressbar(maximum=len(selected_indices))
+            
+            for idx, i in enumerate(selected_indices):
+                page = doc.load_page(i) 
+                rect = page.rect
+                rotation = page.rotation
+
+                text = f"Strona {current_number} z {total_counted_pages}" if format_mode == 'full' else str(current_number)
+                text_width = fitz.get_text_length(text, fontname=font, fontsize=font_size)
+
+                numerowana_strona = idx  # numerowana_strona liczymy od 0
+                # 1. Ustal align
+                if mode == "lustrzana":
+                    if direction == "lewa":
+                        align = "lewa" if numerowana_strona % 2 == 0 else "prawa"
+                    elif direction == "prawa":
+                        align = "prawa" if numerowana_strona % 2 == 0 else "lewa"
+                    else:
+                        align = "srodek"
+                else:
+                    align = direction
+
+                # 2. Korekta align przy rotacji poziomej
+                # if rotation == 270 and align in ("lewa", "prawa"):
+                #align = "prawa" if align == "lewa" else "lewa"
+
+                # 3. Pozycjonowanie numeru
+                if mirror_margins:
+                    if numerowana_strona % 2 == 1:
+                        left_pt, right_pt = right_pt_base, left_pt_base
+                    else:
+                        left_pt, right_pt = left_pt_base, right_pt_base
+                else:
+                    left_pt, right_pt = left_pt_base, right_pt_base
+
+                # --- LOGIKA POZYCJONOWANIA ---
+                if rotation == 0:
+                    if align == "lewa":
+                        x = rect.x0 + left_pt
+                    elif align == "prawa":
+                        x = rect.x1 - right_pt - text_width
+                    elif align == "srodek":
+                        text_area_w = rect.width - left_pt - right_pt
+                        x = rect.x0 + left_pt + (text_area_w / 2) - (text_width / 2)
+                    y = rect.y0 + margin_v + font_size if position == "gora" else rect.y1 - margin_v
+                    angle = 0
+                elif rotation == 90:
+                    lp, rp = left_pt, right_pt  
+                    x = rect.y0 + margin_v + font_size if position == "gora" else rect.y1 - margin_v
+                    if align == "lewa":
+                        y = rect.x1 - lp
+                    elif align == "prawa":
+                        y = rect.x0 + rp + text_width
+                    elif align == "srodek":
+                        text_area_w = rect.width - lp - rp
+                        y = rect.x0 + rp + (text_area_w / 2) + (text_width / 2)
+                    angle = 90
+                elif rotation == 180:
+                    lp, rp = left_pt, right_pt  
+                    if align == "lewa":
+                        x = rect.x1 - lp 
+                    elif align == "prawa":
+                        x = rect.x0 + rp + text_width
+                    elif align == "srodek":
+                        text_area_w = rect.width - lp - rp
+                        x = rect.x0 + rp + (text_area_w / 2) + (text_width / 2)
+                    y = rect.y1 - margin_v - font_size if position == "gora" else rect.y0 + margin_v
+                    angle = 180
+                elif rotation == 270:
+                    lp, rp = left_pt, right_pt
+                    x = rect.y1 - margin_v if position == "gora" else rect.y0 + margin_v
+                    if align == "lewa":
+                        y = rect.x0 + lp
+                    elif align == "prawa":
+                        y = rect.x1 - rp - text_width
+                    elif align == "srodek":
+                        text_area_w = rect.width - lp - rp
+                        y = rect.x0 + lp + (text_area_w / 2) - (text_width / 2)
+                    angle = 270
+     #           elif rotation == 270:
+     #              x = rect.y1 - margin_v if position == "gora" else rect.y0 + margin_v
+      #              if align == "lewa":
+       #                 y = rect.x1 - right_pt - text_width
+        #            elif align == "prawa":
+         #               y = rect.x0 + left_pt
+          #          elif align == "srodek":
+           #             text_area_w = rect.width - left_pt - right_pt
+            #            y = rect.x0 + left_pt + (text_area_w / 2) - (text_width / 2)
+             #       angle = 270
+                else:
+                    x = rect.x0 + left_pt
+                    y = rect.y1 - margin_v
+                    angle = 0
+
+                page.insert_text(
+                    fitz.Point(x, y),
+                    text,
+                    fontsize=font_size,
+                    fontname=font,
+                    color=(0, 0, 0),
+                    rotate=angle
+                )
+
+                print(f"✅ Strona {i+1}: numer {text}, align={align}, mirror={mirror_margins}, x={x:.2f}, y={y:.2f}, rotacja={rotation}°")
+                current_number += 1
+                self.update_progressbar(idx + 1)
+
+            self.hide_progressbar()
             
             # Optymalizacja: odśwież tylko zmienione miniatury
             self.show_progressbar(maximum=len(selected_indices))
@@ -3448,14 +4066,14 @@ class SelectablePDFViewer:
             
             self._update_status(f"Numeracja wstawiona na {len(selected_indices)} stronach.")
             self._record_action('insert_page_numbers', 
-                start_num=settings['start_num'],
-                mode=settings['mode'],
-                alignment=settings['alignment'],
-                vertical_pos=settings['vertical_pos'],
-                mirror_margins=settings['mirror_margins'],
-                format_type=settings['format_type'],
-                margin_left_mm=settings['margin_left_mm'],
-                margin_right_mm=settings['margin_right_mm'],
+                start_num=start_number,
+                mode=mode,
+                alignment=direction,
+                vertical_pos=position,
+                mirror_margins=mirror_margins,
+                format_type=format_mode,
+                margin_left_mm=left_mm,
+                margin_right_mm=right_mm,
                 top_mm=settings.get('top_mm', 20),
                 bottom_mm=settings.get('bottom_mm', 20))
 
@@ -3472,8 +4090,8 @@ class SelectablePDFViewer:
             self._update_status("Musisz zaznaczyć przynajmniej jedną stronę PDF.")
             return
 
-        # Otwarcie dialogu i pobranie wartości od użytkownika
-        dialog = PageNumberMarginDialog(self.master, initial_margin_mm=20, prefs_manager=self.prefs_manager)
+        # 1. Otwarcie dialogu i pobranie wartości od użytkownika
+        dialog = PageNumberMarginDialog(self.master, initial_margin_mm=20, prefs_manager=self.prefs_manager) # Zakładam, że root to główne okno
         margins = dialog.result
 
         if margins is None:
@@ -3482,33 +4100,81 @@ class SelectablePDFViewer:
 
         top_mm = margins['top_mm']
         bottom_mm = margins['bottom_mm']
+        
+        # Przeliczanie milimetrów na punkty
+        mm_to_points = self.MM_TO_POINTS # Używamy stałej klasy
+        top_pt = top_mm * mm_to_points
+        bottom_pt = bottom_mm * mm_to_points
+
+        # ... (resztę kodu ustawiającą wzorce zostawiamy bez zmian) ...
+        page_number_patterns = [
+            r'^\s*[-–]?\s*\d+\s*[-–]?\s*$',  # 1, -1-, - 1 -
+            r'^\s*(?:Strona|Page)\s+\d+\s+(?:z|of)\s+\d+\s*$', 
+            r'^\s*\d+\s*(?:/|-|\s+)\s*\d+\s*$',
+            r'^\s*\(\s*\d+\s*\)\s*$' 
+        ]
+        compiled_patterns = [re.compile(p, re.IGNORECASE) for p in page_number_patterns]
 
         try:
             pages_to_process = sorted(list(self.selected_pages))
             if pages_to_process:     # Zapisz stan tylko jeśli są strony do modyfikacji
                 self._save_state_to_undo()
+            modified_count = 0
             
-            # Deleguj do PDFTools
-            def progress_callback(current, total):
-                if current == 0:
-                    self.show_progressbar(maximum=total)
-                self.update_progressbar(current)
-                if current == total:
-                    self.hide_progressbar()
+            # Update status first to ensure it's visible immediately
+            self._update_status("Usuwanie numerów stron...")
+            self.show_progressbar(maximum=len(pages_to_process))
             
-            modified_count = self.pdf_tools.remove_page_numbers_by_pattern(
-                self.pdf_document, pages_to_process, top_mm, bottom_mm,
-                progress_callback=self._update_status,
-                progressbar_callback=progress_callback
-            )
-            
+            for idx, page_index in enumerate(pages_to_process):
+                page = self.pdf_document.load_page(page_index)
+                rect = page.rect
+                
+                # 2. Definicja obszarów skanowania na podstawie wartości użytkownika
+                
+                # Margines Górny (od 0 do top_pt)
+                top_margin_rect = fitz.Rect(rect.x0, rect.y0, rect.x1, rect.y0 + top_pt)
+                
+                # Margines Dolny (od rect.y1 - bottom_pt do rect.y1)
+                bottom_margin_rect = fitz.Rect(rect.x0, rect.y1 - bottom_pt, rect.x1, rect.y1)
+                
+                scan_rects = [top_margin_rect, bottom_margin_rect]
+                
+                found_and_removed = False
+                
+                # ... (resztę logiki ekstrakcji i usuwania tekstu zostawiamy bez zmian) ...
+                
+                for scan_rect in scan_rects:
+                    text_blocks = page.get_text("blocks", clip=scan_rect)
+                    
+                    for block in text_blocks:
+                        block_text = block[4]
+                        lines = block_text.strip().split('\n')
+                        
+                        for line in lines:
+                            cleaned_line = line.strip()
+                            for pattern in compiled_patterns:
+                                if pattern.fullmatch(cleaned_line):
+                                    text_instances = page.search_for(cleaned_line, clip=scan_rect)
+                                    
+                                    for inst in text_instances:
+                                        page.add_redact_annot(inst)
+                                        found_and_removed = True
+                                        
+                if found_and_removed:
+                    page.apply_redactions()
+                    modified_count += 1
+                
+                self.update_progressbar(idx + 1)
+                    
+            # 3. Finalizacja
             self.hide_progressbar()
-            
             if modified_count > 0:
+          #      self._save_state_to_undo()
                 # Optymalizacja: odśwież tylko zmienione miniatury
                 self.show_progressbar(maximum=len(pages_to_process))
                 for i, page_index in enumerate(pages_to_process):
                     self._update_status(f"Usunięto numery stron na {modified_count} stronach, używając marginesów: G={top_mm:.1f}mm, D={bottom_mm:.1f}mm. Odświeżanie miniatur...")
+
                     self.update_single_thumbnail(page_index)
                     self.update_progressbar(i + 1)
                 self.hide_progressbar()
@@ -3761,36 +4427,36 @@ class SelectablePDFViewer:
             custom_messagebox(self.master, "Informacja", "Najpierw otwórz plik PDF.", typ="info")
             return
 
-        # Zapisz obecny stan do historii przed zmianą
+        # 1. Zapisz obecny stan do historii przed zmianą
         self._save_state_to_undo() 
         
         try:
-            # Deleguj do PDFTools
-            def progress_callback(current, total):
-                if current == 0:
-                    self.show_progressbar(maximum=total)
-                self.update_progressbar(current)
-                if current == total:
-                    self.hide_progressbar()
+            doc = self.pdf_document
+            page_count = len(doc)
             
-            new_doc = self.pdf_tools.reverse_pages(
-                self.pdf_document,
-                progress_callback=self._update_status,
-                progressbar_callback=progress_callback
-            )
+            # Tworzenie nowego, pustego dokumentu z odwróconą kolejnością
+            new_doc = fitz.open()
+            
+            # Update status first to ensure it's visible immediately
+            self._update_status("Odwracanie kolejności stron...")
+            self.show_progressbar(maximum=page_count)
+            
+            for idx, i in enumerate(range(page_count - 1, -1, -1)):
+                new_doc.insert_pdf(doc, from_page=i, to_page=i)
+                self.update_progressbar(idx + 1)
             
             self.hide_progressbar()
             
             # Zastąpienie starego dokumentu nowym
-            page_count = len(self.pdf_document)
             self.pdf_document.close()
             self.pdf_document = new_doc
             
-            # Resetowanie stanu (wyzerowanie zaznaczenia)
+            # 2. Resetowanie stanu (wyzerowanie zaznaczenia)
             self.active_page_index = 0
             self.selected_pages.clear()
             
-            # Czyszczenie i odświeżenie widoku
+            # 3. RĘCZNE CZYSZCZENIE I ODŚWIEŻENIE WIDOKU
+            # Używamy zestawu metod zidentyfikowanych w Twoim kodzie:
             self.tk_images.clear()
             for widget in list(self.scrollable_frame.winfo_children()): 
                 widget.destroy()
@@ -3799,6 +4465,7 @@ class SelectablePDFViewer:
             self._reconfigure_grid()
             self.update_tool_button_states()
             self.update_focus_display()
+            # -----------------------------------------------
             
             self._update_status(f"Pomyślnie odwrócono kolejność {page_count} stron. Odswieżanie miniatur...")
             
@@ -3908,6 +4575,8 @@ class SelectablePDFViewer:
         try:
             # Ustawienia eksportu - pobierz DPI z preferencji
             export_dpi = int(self.prefs_manager.get('export_image_dpi', '600'))
+            zoom = export_dpi / 72.0 
+            matrix = fitz.Matrix(zoom, zoom)
             
             # Pobierz nazwę bazową pliku źródłowego
             if hasattr(self, 'file_path') and self.file_path:
@@ -3915,27 +4584,39 @@ class SelectablePDFViewer:
             else:
                 base_filename = "dokument"
             
+            # Utwórz zakres stron
+            if len(selected_indices) == 1:
+                page_range = str(selected_indices[0] + 1)
+            else:
+                page_range = f"{selected_indices[0] + 1}-{selected_indices[-1] + 1}"
+            
+            exported_count = 0
+            total_pages = len(selected_indices)
+            
             self.master.config(cursor="wait")
+            self.show_progressbar(maximum=total_pages)
+            self._update_status("Eksportowanie stron do obrazów...")
             
-            # Deleguj do PDFTools
-            def progress_callback(current, total):
-                if current == 0:
-                    self.show_progressbar(maximum=total)
-                self.update_progressbar(current)
-                if current == total:
-                    self.hide_progressbar()
-            
-            exported_files = self.pdf_tools.export_pages_to_images(
-                self.pdf_document, selected_indices, output_dir,
-                base_filename, export_dpi, 'png',
-                progress_callback=self._update_status,
-                progressbar_callback=progress_callback
-            )
+            for idx, index in enumerate(selected_indices):
+                if index < len(self.pdf_document):
+                    page = self.pdf_document.load_page(index)
+                    
+                    pix = page.get_pixmap(matrix=matrix, alpha=False)
+                    
+                    # Generuj unikalną nazwę pliku
+                    single_page_range = str(index + 1)
+                    output_path = generate_unique_export_filename(
+                        output_dir, base_filename, single_page_range, "png"
+                    )
+                    
+                    pix.save(output_path)
+                    exported_count += 1
+                    self.update_progressbar(idx + 1)
             
             self.hide_progressbar()
             self.master.config(cursor="")
             
-            self._update_status(f"Pomyślnie wyeksportowano {len(exported_files)} stron do folderu: {output_dir}")   
+            self._update_status(f"Pomyślnie wyeksportowano {exported_count} stron do folderu: {output_dir}")   
         except Exception as e:
             self.hide_progressbar()
             self.master.config(cursor="")
@@ -3952,9 +4633,6 @@ class SelectablePDFViewer:
 
         # Inicjalizacja managera preferencji
         self.prefs_manager = PreferencesManager()
-        
-        # Inicjalizacja narzędzi PDF
-        self.pdf_tools = PDFTools()
         
         # Inicjalizacja systemu makr
         self._init_macro_system()
@@ -4244,7 +4922,7 @@ class SelectablePDFViewer:
         """Odświeża menu główne Makra – dynamicznie dodaje wszystkie makra użytkownika."""
         self.macros_menu.delete(0, "end")  # Wyczyść stare wpisy
         self.macros_menu.add_command(label="Lista makr użytkownika...", command=self.show_macros_list,accelerator="F12")
-        macros = self.macro_manager.get_all_macros()
+        macros = self.prefs_manager.get_profiles('macros')
         if macros:  # separator tylko jeśli jest przynajmniej jedno makro
             self.macros_menu.add_separator()
             for macro_name in macros:
@@ -4693,7 +5371,7 @@ class SelectablePDFViewer:
         self.update_focus_display(hide_mouse_focus=True)
 
         # --- Dodaj to poniżej! ---
-        if self.macro_manager.is_recording():
+        if getattr(self, "macro_recording", False):
             indices = sorted(self.selected_pages)
             page_count = len(self.pdf_document) if self.pdf_document else 0
             self._record_action('select_custom', indices=indices, source_page_count=page_count)
@@ -4980,33 +5658,37 @@ class SelectablePDFViewer:
             image_path = filepath
 
         try:
-            # Deleguj do PDFTools
-            new_pdf_document = self.pdf_tools.create_pdf_from_image_exact_size(image_path)
-            
-            if new_pdf_document is None:
-                custom_messagebox(self.master, "Błąd", "Nie można utworzyć PDF z obrazu.", typ="error")
-                return
-            
-            # Zamień obecny dokument nowym
-            if self.pdf_document:
-                self.pdf_document.close()
-            
-            self.pdf_document = new_pdf_document
-            self.undo_stack.clear()
-            self.redo_stack.clear()
-            self.selected_pages.clear()
-            self.tk_images.clear()
-            for widget in list(self.scrollable_frame.winfo_children()): 
-                widget.destroy()
-            self.thumb_frames.clear()
-
-            self.active_page_index = 0
-            self._reconfigure_grid()
-            self.update_tool_button_states()
-            self.update_focus_display()
-            self._update_status("Utworzono nowy PDF ze stroną dopasowaną do obrazu. Odświeżanie miniatur...")
+            img = Image.open(image_path)
+            image_width_px, image_height_px = img.size
+            image_dpi = img.info.get('dpi', (96, 96))[0] if isinstance(img.info.get('dpi'), tuple) else 96
+            img.close()
         except Exception as e:
             custom_messagebox(self.master, "Błąd", f"Nie można wczytać obrazu: {e}", typ="error")
+            return
+
+        # Przelicz piksele na punkty PDF (1 cal = 72 punkty)
+        image_width_pt = (image_width_px / image_dpi) * 72
+        image_height_pt = (image_height_px / image_dpi) * 72
+
+        # Stwórz nowy dokument PDF
+        self.pdf_document = fitz.open()
+        self.undo_stack.clear()
+        self.redo_stack.clear()
+        self.selected_pages.clear()
+        self.tk_images.clear()
+        for widget in list(self.scrollable_frame.winfo_children()): widget.destroy()
+        self.thumb_frames.clear()
+
+        # Nowa strona o rozmiarze obrazu
+        page = self.pdf_document.new_page(width=image_width_pt, height=image_height_pt)
+        rect = fitz.Rect(0, 0, image_width_pt, image_height_pt)
+        page.insert_image(rect, filename=image_path)
+
+        self.active_page_index = 0
+        self._reconfigure_grid()
+        self.update_tool_button_states()
+        self.update_focus_display()
+        self._update_status("Utworzono nowy PDF ze stroną dopasowaną do obrazu. Odświeżanie miniatur...")
     
     def import_pdf_after_active_page(self, event=None, filepath=None):
         if self.pdf_document is None:
@@ -5332,8 +6014,13 @@ class SelectablePDFViewer:
             self.update_tool_button_states()
             
     def _get_page_bytes(self, page_indices: Set[int]) -> bytes:
-        """Wrapper dla PDFTools.get_page_bytes"""
-        return self.pdf_tools.get_page_bytes(self.pdf_document, page_indices)
+        temp_doc = fitz.open()
+        sorted_indices = sorted(list(page_indices))
+        for index in sorted_indices:
+            temp_doc.insert_pdf(self.pdf_document, from_page=index, to_page=index)
+        page_bytes = temp_doc.write()
+        temp_doc.close()
+        return page_bytes
     
     def copy_selected_pages(self):
         if not self.pdf_document or not self.selected_pages:
@@ -5357,15 +6044,9 @@ class SelectablePDFViewer:
             self.clipboard = self._get_page_bytes(self.selected_pages)
             self.pages_in_clipboard_count = len(self.selected_pages)
             pages_to_delete = sorted(list(self.selected_pages), reverse=True)
-            
-            # Użyj PDFTools do usunięcia stron
-            deleted_count = self.pdf_tools.delete_pages(
-                self.pdf_document,
-                pages_to_delete,
-                progress_callback=self._update_status,
-                progressbar_callback=None
-            )
-            
+            for page_index in pages_to_delete:
+                self.pdf_document.delete_page(page_index)
+            deleted_count = len(self.selected_pages)
             self.selected_pages.clear()
             
             # Validate and update active_page_index after deletion
@@ -5470,22 +6151,15 @@ class SelectablePDFViewer:
     def _perform_paste(self, target_index: int):
         try:
             self._save_state_to_undo()
+            temp_doc = fitz.open("pdf", self.clipboard)
+            num_inserted = len(temp_doc)
             
-            # Pokaż pasek postępu
+            # Pokaż pasek postępu (tryb nieokreślony dla pojedynczej operacji wklejania)
             self.show_progressbar(mode="indeterminate")
             self._update_status("Wklejanie stron...")
             
-            # Deleguj do PDFTools
-            def progress_callback(current, total):
-                self.update_progressbar(current) if current else None
-            
-            num_inserted = self.pdf_tools.paste_pages(
-                self.pdf_document,
-                self.clipboard,
-                target_index,
-                progress_callback=self._update_status,
-                progressbar_callback=progress_callback
-            )
+            self.pdf_document.insert_pdf(temp_doc, start_at=target_index)
+            temp_doc.close()
 
             # Select the newly pasted pages
             self.selected_pages = set(range(target_index, target_index + num_inserted))
@@ -5530,25 +6204,20 @@ class SelectablePDFViewer:
                 self._update_status("Anulowano usuwanie stron.")
                 return
         
+        deleted_count = 0
         try:
             if save_state:
                 self._save_state_to_undo()
             
-            # Deleguj do PDFTools
-            def progress_callback(current, total):
-                if current == 0:
-                    self.show_progressbar(maximum=total)
-                self.update_progressbar(current)
-                if current == total:
-                    self.hide_progressbar()
+            self.show_progressbar(maximum=len(pages_to_delete))
+            self._update_status("Usuwanie stron...")
             
-            deleted_count = self.pdf_tools.delete_pages(
-                self.pdf_document,
-                pages_to_delete,
-                progress_callback=self._update_status,
-                progressbar_callback=progress_callback
-            )
+            for idx, page_index in enumerate(pages_to_delete):
+                self.pdf_document.delete_page(page_index)
+                deleted_count += 1
+                self.update_progressbar(idx + 1)
             
+            self.hide_progressbar()
             self.selected_pages.clear()
             self.tk_images.clear()
             for widget in list(self.scrollable_frame.winfo_children()): widget.destroy()
@@ -5629,14 +6298,9 @@ class SelectablePDFViewer:
                 return
             export_mode = result[0]
         
-        # Pobierz nazwę bazową pliku
-        if hasattr(self, 'file_path') and self.file_path:
-            base_filename = os.path.splitext(os.path.basename(self.file_path))[0]
-        else:
-            base_filename = "dokument"
-        
         if export_mode == "single":
             # Wszystkie strony do jednego pliku
+            # Wybierz folder
             output_dir = filedialog.askdirectory(
                 title="Wybierz folder do zapisu PDF"
             )
@@ -5645,6 +6309,12 @@ class SelectablePDFViewer:
                 return
             
             try:
+                # Pobierz nazwę bazową
+                if hasattr(self, 'file_path') and self.file_path:
+                    base_filename = os.path.splitext(os.path.basename(self.file_path))[0]
+                else:
+                    base_filename = "dokument"
+                
                 # Utwórz zakres stron
                 if len(selected_indices) == 1:
                     page_range = str(selected_indices[0] + 1)
@@ -5656,26 +6326,12 @@ class SelectablePDFViewer:
                     output_dir, base_filename, page_range, "pdf"
                 )
                 
-                # Deleguj do PDFTools
-                def progress_callback(current, total):
-                    if current == 0:
-                        self.show_progressbar(maximum=total)
-                    self.update_progressbar(current)
-                    if current == total:
-                        self.hide_progressbar()
-                
-                success = self.pdf_tools.extract_pages_to_single_pdf(
-                    self.pdf_document, selected_indices, filepath,
-                    progress_callback=self._update_status,
-                    progressbar_callback=progress_callback
-                )
-                
-                if success:
-                    self._update_status(f"Pomyślnie wyodrębniono {len(selected_indices)} stron do: {filepath}")
-                else:
-                    self._update_status(f"BŁĄD: Nie udało się wyodrębnić stron")
+                page_bytes = self._get_page_bytes(self.selected_pages)
+                num_extracted = len(self.selected_pages)
+                with open(filepath, "wb") as f:
+                    f.write(page_bytes)
+                self._update_status(f"Pomyślnie wyodrębniono {num_extracted} stron do: {filepath}")
             except Exception as e:
-                self.hide_progressbar()
                 self._update_status(f"BŁĄD Eksportu: Nie udało się zapisać nowego pliku: {e}")
         else:
             # Każda strona do osobnego pliku
@@ -5687,19 +6343,31 @@ class SelectablePDFViewer:
                 return
             
             try:
-                # Deleguj do PDFTools
-                def progress_callback(current, total):
-                    if current == 0:
-                        self.show_progressbar(maximum=total)
-                    self.update_progressbar(current)
-                    if current == total:
-                        self.hide_progressbar()
+                # Pobierz nazwę bazową
+                if hasattr(self, 'file_path') and self.file_path:
+                    base_filename = os.path.splitext(os.path.basename(self.file_path))[0]
+                else:
+                    base_filename = "dokument"
                 
-                exported_count = self.pdf_tools.extract_pages_to_separate_pdfs(
-                    self.pdf_document, selected_indices, output_dir, base_filename,
-                    progress_callback=self._update_status,
-                    progressbar_callback=progress_callback
-                )
+                exported_count = 0
+                
+                self.show_progressbar(maximum=len(selected_indices))
+                self._update_status("Ekstrakcja stron do osobnych plików...")
+                
+                for idx, index in enumerate(selected_indices):
+                    # Utwórz dokument z jedną stroną
+                    page_bytes = self._get_page_bytes({index})
+                    
+                    # Generuj unikalną nazwę pliku
+                    single_page_range = str(index + 1)
+                    output_path = generate_unique_export_filename(
+                        output_dir, base_filename, single_page_range, "pdf"
+                    )
+                    
+                    with open(output_path, "wb") as f:
+                        f.write(page_bytes)
+                    exported_count += 1
+                    self.update_progressbar(idx + 1)
                 
                 self.hide_progressbar()
                 self._update_status(f"Pomyślnie wyodrębniono {exported_count} stron do folderu: {output_dir}")
@@ -5907,27 +6575,23 @@ class SelectablePDFViewer:
         pages_to_rotate = sorted(list(self.selected_pages))
         try:
             self._save_state_to_undo()
-            
-            # Deleguj do PDFTools
-            def progress_callback(current, total):
-                if current == 0:
-                    self.show_progressbar(maximum=total)
-                self.update_progressbar(current)
-                if current == total:
-                    self.hide_progressbar()
-            
-            rotated_count = self.pdf_tools.rotate_pages(
-                self.pdf_document,
-                pages_to_rotate,
-                angle,
-                progress_callback=self._update_status,
-                progressbar_callback=progress_callback
-            )
+            self.show_progressbar(maximum=len(pages_to_rotate))
+            rotated_count = 0
+            for idx, page_index in enumerate(pages_to_rotate):
+                page = self.pdf_document.load_page(page_index)
+                current_rotation = page.rotation
+                new_rotation = (current_rotation + angle) % 360
+                page.set_rotation(new_rotation)
+                rotated_count += 1
+                self.update_progressbar(idx + 1)
+
+            self.hide_progressbar()
             
             # Optymalizacja: odśwież tylko zmienione miniatury
             self.show_progressbar(maximum=len(pages_to_rotate))
             for i, page_index in enumerate(pages_to_rotate):
                 self._update_status(f"Obrócono {rotated_count} stron o {angle} stopni. Odświeżanie miniatur...")
+               
                 self.update_single_thumbnail(page_index)
                 self.update_progressbar(i + 1)
             self.hide_progressbar()
@@ -5968,32 +6632,34 @@ class SelectablePDFViewer:
             self._save_state_to_undo()
 
             sorted_pages = sorted(self.selected_pages)
-            
-            # Pobierz rozmiar z pierwszej strony jeśli możliwe
-            try:
-                rect = self.pdf_document[sorted_pages[0]].rect
-                width = rect.width
-                height = rect.height  
-            except Exception:
-                pass  # Zostaw domyślne A4
+            new_page_indices = set()
+            offset = 0
 
-            # Deleguj do PDFTools
-            def progress_callback(current, total):
-                if current == 0:
-                    self.show_progressbar(maximum=total)
-                self.update_progressbar(current)
-                if current == total:
-                    self.hide_progressbar()
-            
-            new_page_indices = self.pdf_tools.insert_blank_pages(
-                self.pdf_document,
-                sorted_pages,
-                before,
-                width,
-                height,
-                progress_callback=self._update_status,
-                progressbar_callback=progress_callback
-            )
+            # Pokaż pasek postępu
+            self.show_progressbar(maximum=len(sorted_pages))
+            self._update_status("Wstawianie pustych stron...")
+
+            for idx, page_index in enumerate(sorted_pages):
+                try:
+                    rect = self.pdf_document[page_index + offset].rect
+                    width = rect.width
+                    height = rect.height  
+                except Exception:
+                    pass  # Zostaw domyślne
+
+                if before:
+                    target_page = page_index + offset
+                else:
+                    target_page = page_index + 1 + offset
+
+                self.pdf_document.insert_page(
+                    pno=target_page,  
+                    width=width,  
+                    height=height
+                )
+                new_page_indices.add(target_page)
+                offset += 1
+                self.update_progressbar(idx + 1)
 
             self.selected_pages = new_page_indices
 
@@ -6005,6 +6671,8 @@ class SelectablePDFViewer:
             self.update_selection_display()
             self.update_tool_button_states()
             self.update_focus_display()
+
+            self.hide_progressbar()
             
             if num_selected == 1:
                 self._update_status(f"Wstawiono nową, pustą stronę. Aktualna liczba stron: {len(self.pdf_document)}. Odświeżanie miniatur...")
@@ -6047,10 +6715,16 @@ class SelectablePDFViewer:
             for idx_progress, original_index in enumerate(sorted_pages):
                 # Po każdej insercji kolejne strony są przesunięte o offset
                 idx = original_index + offset
-                
-                # Użyj PDFTools do duplikacji
-                self.pdf_tools.duplicate_page(self.pdf_document, idx, idx + 1)
-                
+
+                temp_doc = fitz.open()
+                temp_doc.insert_pdf(self.pdf_document, from_page=idx, to_page=idx)
+                self.pdf_document.insert_pdf(
+                    temp_doc,
+                    from_page=0,
+                    to_page=0,
+                    start_at=idx + 1
+                )
+                temp_doc.close()
                 # Wstawiona strona jest zawsze na pozycji idx+1
                 new_page_indices.add(idx + 1)
                 offset += 1
@@ -6086,6 +6760,7 @@ class SelectablePDFViewer:
         try:
             self._save_state_to_undo()
             
+            # Pokaż pasek postępu (4 kroki: kopiuj stronę 1, kopiuj stronę 2, usuń, wstaw)
             self.show_progressbar(maximum=4)
             self._update_status("Zamiana stron miejscami...")
             
@@ -6094,9 +6769,27 @@ class SelectablePDFViewer:
             page1_idx = pages[0]
             page2_idx = pages[1]
             
-            # Deleguj do PDFTools
-            self.pdf_tools.swap_pages(self.pdf_document, page1_idx, page2_idx)
+            # Create temporary documents for both pages
+            temp_doc1 = fitz.open()
+            temp_doc1.insert_pdf(self.pdf_document, from_page=page1_idx, to_page=page1_idx)
+            self.update_progressbar(1)
+            
+            temp_doc2 = fitz.open()
+            temp_doc2.insert_pdf(self.pdf_document, from_page=page2_idx, to_page=page2_idx)
+            self.update_progressbar(2)
+            
+            # Delete both pages (delete higher index first to maintain lower index)
+            self.pdf_document.delete_page(page2_idx)
+            self.pdf_document.delete_page(page1_idx)
+            self.update_progressbar(3)
+            
+            # Insert them in swapped positions
+            self.pdf_document.insert_pdf(temp_doc2, from_page=0, to_page=0, start_at=page1_idx)
+            self.pdf_document.insert_pdf(temp_doc1, from_page=0, to_page=0, start_at=page2_idx)
             self.update_progressbar(4)
+            
+            temp_doc1.close()
+            temp_doc2.close()
             
             # Odśwież tylko zamienione miniatury
             self.update_single_thumbnail(page1_idx)
@@ -6118,6 +6811,8 @@ class SelectablePDFViewer:
         Przed renderowaniem każda strona jest automatycznie obracana jeśli jej orientacja nie pasuje do komórki siatki.
         Marginesy i odstępy pobierane są z dialogu (osobno dla każdej krawędzi/osi).
         """
+        import io
+
         if not self.pdf_document:
             self._update_status("BŁĄD: Otwórz najpierw dokument PDF.")
             return
@@ -6128,7 +6823,6 @@ class SelectablePDFViewer:
         selected_indices = sorted(list(self.selected_pages))
         num_pages = len(selected_indices)
 
-        # Pokaż dialog ustawień
         dialog = MergePageGridDialog(self.master, page_count=num_pages, prefs_manager=self.prefs_manager)
         params = dialog.result
         if params is None:
@@ -6136,7 +6830,6 @@ class SelectablePDFViewer:
             return
 
         try:
-            # Konwersja jednostek z mm na punkty
             sheet_width_pt = params["sheet_width_mm"] * self.MM_TO_POINTS
             sheet_height_pt = params["sheet_height_mm"] * self.MM_TO_POINTS
             margin_top_pt = params["margin_top_mm"] * self.MM_TO_POINTS
@@ -6147,28 +6840,74 @@ class SelectablePDFViewer:
             spacing_y_pt = params["spacing_y_mm"] * self.MM_TO_POINTS
             rows = params["rows"]
             cols = params["cols"]
-            target_dpi = params.get("dpi", 600)
+
+            TARGET_DPI = params.get("dpi", 600)
+            PT_TO_INCH = 1 / 72
+
+            total_cells = rows * cols
+
+            # Poprawka: powielaj tylko jeśli jedna strona, przy wielu nie powielaj żadnej
+            if num_pages == 1:
+                source_pages = [selected_indices[0]] * total_cells
+            else:
+                source_pages = [selected_indices[i] if i < num_pages else None for i in range(total_cells)]
+
+            # Oblicz rozmiar komórki (punkt PDF)
+            if cols == 1:
+                cell_width = sheet_width_pt - margin_left_pt - margin_right_pt
+            else:
+                cell_width = (sheet_width_pt - margin_left_pt - margin_right_pt - (cols - 1) * spacing_x_pt) / cols
+            if rows == 1:
+                cell_height = sheet_height_pt - margin_top_pt - margin_bottom_pt
+            else:
+                cell_height = (sheet_height_pt - margin_top_pt - margin_bottom_pt - (rows - 1) * spacing_y_pt) / rows
 
             self._save_state_to_undo()
+            new_page = self.pdf_document.new_page(width=sheet_width_pt, height=sheet_height_pt)
+
+            self.show_progressbar(maximum=len(source_pages))
+            self._update_status("Scalanie stron w siatkę...")
             
-            # Deleguj do PDFTools
-            def progress_callback(current, total):
-                if current == 0:
-                    self.show_progressbar(maximum=total)
-                self.update_progressbar(current)
-                if current == total:
-                    self.hide_progressbar()
-            
-            self.pdf_tools.merge_pages_into_grid(
-                self.pdf_document, selected_indices, rows, cols,
-                sheet_width_pt, sheet_height_pt,
-                margin_top_pt, margin_bottom_pt,
-                margin_left_pt, margin_right_pt,
-                spacing_x_pt, spacing_y_pt,
-                target_dpi,
-                progress_callback=self._update_status,
-                progressbar_callback=progress_callback
-            )
+            for idx, src_idx in enumerate(source_pages):
+                row = idx // cols
+                col = idx % cols
+                if row >= rows:
+                    break
+                if src_idx is None:
+                    continue  # Pusta komórka
+
+                x = margin_left_pt + col * (cell_width + spacing_x_pt)
+                y = margin_top_pt + row * (cell_height + spacing_y_pt)
+
+                src_page = self.pdf_document[src_idx]
+                page_rect = src_page.rect
+                page_w = page_rect.width
+                page_h = page_rect.height
+
+                # Automatyczny obrót jeśli orientacja strony nie pasuje do komórki
+                page_landscape = page_w > page_h
+                cell_landscape = cell_width > cell_height
+                rotate = 0
+                if page_landscape != cell_landscape:
+                    rotate = 90  # Obróć o 90 stopni
+
+                # Skala renderowania: bitmapa ma dokładnie tyle pikseli, ile wynosi rozmiar komórki w punktach * 600 / 72
+                bitmap_w = int(round(cell_width * TARGET_DPI * PT_TO_INCH))
+                bitmap_h = int(round(cell_height * TARGET_DPI * PT_TO_INCH))
+
+                if rotate == 90:
+                    scale_x = bitmap_w / page_h
+                    scale_y = bitmap_h / page_w
+                else:
+                    scale_x = bitmap_w / page_w
+                    scale_y = bitmap_h / page_h
+
+                # Renderuj bitmapę w bardzo wysokiej rozdzielczości, z ewentualnym obrotem
+                pix = src_page.get_pixmap(matrix=fitz.Matrix(scale_x, scale_y).prerotate(rotate), alpha=False)
+                img_bytes = pix.tobytes("png")
+                rect = fitz.Rect(x, y, x + cell_width, y + cell_height)
+                new_page.insert_image(rect, stream=img_bytes)
+                self.update_progressbar(idx + 1)
 
             # Odświeżenie GUI
             self.hide_progressbar()
@@ -6180,7 +6919,7 @@ class SelectablePDFViewer:
             self.update_tool_button_states()
             self.update_focus_display()
             self._update_status(
-                f"Scalono {num_pages} stron w siatkę {rows}x{cols} na nowym arkuszu {params['format_name']} (bitmapy {target_dpi}dpi). Odświeżanie miniatur..."
+                f"Scalono {num_pages} stron w siatkę {rows}x{cols} na nowym arkuszu {params['format_name']} (bitmapy 600dpi). Odświeżanie miniatur..."
             )
         except Exception as e:
             self.hide_progressbar()
@@ -6717,33 +7456,45 @@ class SelectablePDFViewer:
         
         try:
             self._save_state_to_undo()
+            empty_pages = []
             
-            # Deleguj wykrywanie do PDFTools
-            def progress_callback(current, total):
-                if current == 0:
-                    self.show_progressbar(maximum=total)
-                self.update_progressbar(current)
-                if current == total:
-                    self.hide_progressbar()
+            total_pages = len(self.pdf_document)
             
-            empty_pages = self.pdf_tools.detect_empty_pages(
-                self.pdf_document,
-                progress_callback=self._update_status,
-                progressbar_callback=progress_callback
-            )
+            # Pokaż pasek postępu dla skanowania stron
+            self.show_progressbar(maximum=total_pages)
+            self._update_status("Skanowanie pustych stron...")
+            
+            # Identyfikuj puste strony
+            for page_index in range(total_pages):
+                page = self.pdf_document[page_index]
+                text = page.get_text().strip()
+                
+                # Sprawdź czy strona ma tekst
+                if not text:
+                    # Sprawdź czy tło jest białe (bardzo prosty test)
+                    # Możemy sprawdzić czy są jakieś rysunki/obrazy
+                    drawings = page.get_drawings()
+                    images = page.get_images()
+                    
+                    # Jeśli brak tekstu, rysunków i obrazów - strona jest pusta
+                    if not drawings and not images:
+                        empty_pages.append(page_index)
+                
+                self.update_progressbar(page_index + 1)
             
             if not empty_pages:
                 self.hide_progressbar()
                 custom_messagebox(self.master, "Informacja", "Nie znaleziono pustych stron w dokumencie.", typ="info")
                 return
             
-            # Deleguj usuwanie do PDFTools
-            deleted_count = self.pdf_tools.remove_empty_pages(
-                self.pdf_document,
-                empty_pages,
-                progress_callback=self._update_status,
-                progressbar_callback=progress_callback
-            )
+            # Zmień pasek na usuwanie stron
+            self.show_progressbar(maximum=len(empty_pages))
+            self._update_status("Usuwanie pustych stron...")
+            
+            # Usuń puste strony (od końca, żeby nie zmienić indeksów)
+            for idx, page_index in enumerate(reversed(empty_pages)):
+                self.pdf_document.delete_page(page_index)
+                self.update_progressbar(idx + 1)
             
             # Odśwież widok
             self.selected_pages.clear()
@@ -6759,7 +7510,7 @@ class SelectablePDFViewer:
             
             self.hide_progressbar()
             
-            self._update_status(f"Usunięto {deleted_count} pustych stron. Odswieżanie miniatur...")
+            self._update_status(f"Usunięto {len(empty_pages)} pustych stron. Odswieżanie miniatur...")
         except Exception as e:
             self.hide_progressbar()
             custom_messagebox(self.master, "Błąd", f"Nie udało się usunąć pustych stron:\n{e}", typ="error")
@@ -6774,7 +7525,9 @@ class SelectablePDFViewer:
     
     def _init_macro_system(self):
         """Inicjalizuje system makr"""
-        self.macro_manager = MacroManager(self.prefs_manager)
+        self.macro_recording = False
+        self.current_macro_actions = []
+        self.macro_recording_name = None
         self.macros_list_dialog = None  # Track the MacrosListDialog instance
         self.pdf_analysis_dialog = None  # Track the PDFAnalysisDialog instance
     
@@ -6785,7 +7538,11 @@ class SelectablePDFViewer:
     
     def _record_action(self, action_name, **kwargs):
         """Nagrywa akcję do bieżącego makra"""
-        self.macro_manager.record_action(action_name, **kwargs)
+        if self.macro_recording:
+            self.current_macro_actions.append({
+                'action': action_name,
+                'params': kwargs
+            })
     
     def show_macros_list(self):
         """Wyświetla listę makr użytkownika"""
@@ -6809,11 +7566,12 @@ class SelectablePDFViewer:
     
     def run_macro(self, macro_name):
         """Uruchamia makro o podanej nazwie"""
-        macro = self.macro_manager.get_macro(macro_name)
-        if not macro:
+        macros = self.prefs_manager.get_profiles('macros')
+        if macro_name not in macros:
             custom_messagebox(self.master, "Błąd", f"Makro '{macro_name}' nie istnieje.", typ="error")
             return
         
+        macro = macros[macro_name]
         actions = macro.get('actions', [])
         
         if not actions:
@@ -6821,9 +7579,8 @@ class SelectablePDFViewer:
             return
         
         # Wyłącz nagrywanie podczas wykonywania makra
-        was_recording = self.macro_manager.is_recording()
-        if was_recording:
-            self.macro_manager.recording = False
+        was_recording = self.macro_recording
+        self.macro_recording = False
         
         try:
             for action_data in actions:
@@ -6865,8 +7622,7 @@ class SelectablePDFViewer:
         except Exception as e:
             custom_messagebox(self.master, "Błąd", f"Błąd podczas wykonywania makra:\n{e}", typ="error")
         finally:
-            if was_recording:
-                self.macro_manager.recording = True
+            self.macro_recording = was_recording
     
     def _replay_shift_page_content(self, params):
         """Replay shift_page_content with saved parameters (zgodnie z aktualną wersją GUI)"""
